@@ -1,11 +1,7 @@
 package format
 
 import (
-	"fmt"
 	"github.com/viant/tagly/format/text"
-	"golang.org/x/text/language"
-	"golang.org/x/text/message"
-	"golang.org/x/text/number"
 	"time"
 )
 
@@ -66,15 +62,4 @@ func (t *Tag) CaseFormatName(defaultCaseFormat text.CaseFormat) string {
 		t.CaseFormat = string(to)
 	}
 	return t.formatter.Format(t.Name)
-}
-
-func (t *Tag) FormatFloat(f float64) (string, error) {
-	//TODO load printer language from tag
-	p := message.NewPrinter(language.AmericanEnglish)
-	switch t.FormatMask {
-	case "Decimal":
-		return p.Sprintf("%v", number.Decimal(f)), nil
-	default:
-		return "", fmt.Errorf("foramt: %s not yet supported", t.FormatMask)
-	}
 }

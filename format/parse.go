@@ -1,7 +1,7 @@
 package format
 
 import (
-	ftime "github.com/viant/structology/format/time"
+	ftime "github.com/viant/tagly/format/time"
 	"time"
 )
 
