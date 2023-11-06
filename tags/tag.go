@@ -11,7 +11,7 @@ import (
 const TagName = "tag"
 
 type (
-	//Tag
+	//Tag defines generic tag
 	Tag struct {
 		Name   string
 		Values Values

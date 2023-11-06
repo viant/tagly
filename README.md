@@ -24,30 +24,37 @@ which includes a **format** tag
 #### Formatting tag
 
 ```go
+package example
+
+import (
+	"reflect"
+	"time"
+	"log"
+	"fmt"
+	"github.com/viant/tagly/format"
+)
 
 type (
 	Bar struct {
-	    Info string	
-    }   
+		Info string
+	}
 	Dummy struct {
-        ID              string      `format:"Id"`
-        At              time.Time   `format:"tz=UTC,dateFormat:yyyy-MM-dd hh:mm`
-        Internal bool               `format:"-"`
-		Bar                         `format:",inline"`
-		AttrX string                `format:",caseFormat=upperdash"`
-        Bar                         `format:",inline"`
-		Other string                `format:",inline,dateFormat=yyyy-MM-dd" json:"JsonCustomizedName"`
-    }
+		ID       string    `format:"Id"`
+		At       time.Time `format:"tz=UTC,dateFormat:yyyy-MM-dd hh:mm`
+		Internal bool      `format:"-"`
+		Bar      `format:",inline"`
+		AttrX    string `format:",caseFormat=upperdash"`
+		Other    string `format:",inline,dateFormat=yyyy-MM-dd" json:"JsonCustomizedName"`
+	}
 )
 
-
 func ExampleOfFormatTag() {
-    tagValue :=  `format:",inline,dateFormat=yyyy-MM-dd" json:"JsonCustomizedName"`
-    tag, err := format.Parse(tagValue, "json")
-    if err != nil {
-	    log.Fatal(err)	
-    }
-	fmt.Printf("%+v\n", tagValue)
+	tagValue := reflect.StructTag(`format:",inline,dateFormat=yyyy-MM-dd" json:"JsonCustomizedName"`)
+	tag, err := format.Parse(tagValue, "json")
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("%+v\n", tag)
 }    
 ```
 
@@ -55,7 +62,13 @@ func ExampleOfFormatTag() {
 #### Parsing tags
 
 ```go
+package example
 
+import (
+	"strings"
+	"fmt"
+	"github.com/viant/tagly/tags"
+)
 
 type Tag struct {
     Name string
@@ -65,7 +78,7 @@ type Tag struct {
 	
 }
 
-func (t *Tag) updateTagKey(key value string) error {
+func (t *Tag) updateTagKey(key, value string) error {
     switch strings.ToLower(key) {
         case "name":
 			t.Name = value
@@ -74,7 +87,7 @@ func (t *Tag) updateTagKey(key value string) error {
         case "settingn":
 			t.SettingN = value == "true" || value == ""
 		case "repeated":
-			t.Repeated = strigns.Split(strings.Tring(value, "{}", ",")
+			t.Repeated = strings.Split(strings.Trim(value, "{}"), ",")
 		default:
 			return fmt.Errorf("unsupported tag: %s", key)
     }
@@ -84,10 +97,6 @@ func (t *Tag) updateTagKey(key value string) error {
 
 func ParseTag(tagString string) *Tag {
 	tag := &Tag{}
-		}
-	if tagString == "-" {
-		tag.Transient = true
-	}
 	values := tags.Values(tagString)
 	name, values := values.Name()
 	tag.Name = name
@@ -101,14 +110,20 @@ func ParseTag(tagString string) *Tag {
 
 Case formatter
 ```go
-    
+package example
+
+import (
+	"fmt"
+	"github.com/viant/tagly/format/text"
+)
+
+
 func ExampleCaseFormatter() {
 	
     caseFormat := text.CaseFormatUpperUnderscore
-    formatter := caseFormat.from.To(text.CaseFormatLowerCamel)
+    formatter := caseFormat.To(text.CaseFormatLowerCamel)
     formatted := formatter.Format("THIS_IS_TEST")
-    fmt.Printf("formatted")
-
+    fmt.Printf("formatted: %s\n", formatted)
 	
    detected := text.DetectCaseFormat("candidate", "candidate_2")
    fmt.Printf("detected: %s %v\n", detected, detected.IsDefined())

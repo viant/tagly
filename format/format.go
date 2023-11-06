@@ -5,6 +5,7 @@ import (
 	"time"
 )
 
+// FormatTime formats time
 func (t *Tag) FormatTime(ts *time.Time) string {
 
 	ts = t.adjustTimezone(ts)
@@ -35,10 +36,12 @@ func (t *Tag) adjustTimezone(ts *time.Time) *time.Time {
 	return ts
 }
 
+// FormatName formata name
 func (t *Tag) FormatName() string {
 	return t.CaseFormatName("")
 }
 
+// CaseFormatName returns case formatted name
 func (t *Tag) CaseFormatName(defaultCaseFormat text.CaseFormat) string {
 	if t.CaseFormat == "-" {
 		return t.Name

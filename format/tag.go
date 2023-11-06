@@ -11,9 +11,11 @@ import (
 )
 
 const (
+	//TagName defines format tag name
 	TagName = "format"
 )
 
+// Tag defines format tag
 type Tag struct {
 	Name string `tag:"name,omitempty"` //source for output name, is case formater is not defined, use Name otherwise use Name in UpperCamel format
 	//to format output name with specified CaseFormat
@@ -40,6 +42,7 @@ type Tag struct {
 	formatter *text.CaseFormatter `tag:"-"`
 }
 
+// IsNullable returns true if nullable
 func (t *Tag) IsNullable() bool {
 	if t.Nullable == nil {
 		return false
@@ -106,10 +109,12 @@ var tagKeys = map[string]bool{
 	"lang": true, "language": true,
 }
 
+// IsValidTagKey returns true if value key
 func IsValidTagKey(key string) bool {
 	return tagKeys[key]
 }
 
+// Parse parses format tag
 func Parse(tag reflect.StructTag, names ...string) (*Tag, error) {
 	ret := &Tag{}
 

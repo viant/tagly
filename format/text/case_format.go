@@ -32,6 +32,7 @@ func (c CaseFormat) IsDefined() bool {
 	return c.Index() > 0
 }
 
+// Format formats text
 func (c CaseFormat) Format(text string, caseFormat CaseFormat) string {
 	return c.To(caseFormat).Format(text)
 }
