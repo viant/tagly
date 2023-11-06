@@ -16,12 +16,8 @@ Please refer to [`CHANGELOG.md`](CHANGELOG.md) if you encounter breaking changes
 
 ## Motivation
 
-This project provides go struct tag utility to parse complex tags, alongside common tag functionality
-
-   `tagNameX:"name,key1=value1,key2,repeated={1,2,3},keyN=valueN" ` 
-
-This project also defines formatting utilities:
-
+This project provides go struct tag utility to parse complex tags, alongside common tag functionality, 
+which includes a **format** tag
 
 ## Usage
 
