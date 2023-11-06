@@ -171,7 +171,7 @@ func NewTag(name string, value interface{}) *Tag {
 	for i := 0; i < rValue.NumField(); i++ {
 		fieldValue := rValue.Field(i)
 		field := rType.Field(i)
-		if fieldValue.Type().PkgPath() != "" {
+		if field.PkgPath != "" {
 			continue
 		}
 		omitEmpty := false
