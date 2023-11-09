@@ -9,7 +9,7 @@ import (
 func matchPair(cursor *parsly.Cursor) (string, string) {
 	key := ""
 	value := ""
-	var tokens = []*parsly.Token{scopeBlockMatcher}
+	var tokens = []*parsly.Token{scopeBlockMatcher, quotedMatcher}
 
 	eqIndex := bytes.Index(cursor.Input[cursor.Pos:], []byte("="))
 	comaIndex := bytes.Index(cursor.Input[cursor.Pos:], []byte(","))
@@ -27,6 +27,9 @@ func matchPair(cursor *parsly.Cursor) (string, string) {
 
 	switch match.Code {
 	case scopeBlockToken:
+		value = match.Text(cursor)
+		match = cursor.MatchAny(comaTerminatorMatcher)
+	case quotedToken:
 		value = match.Text(cursor)
 		match = cursor.MatchAny(comaTerminatorMatcher)
 	case comaTerminatorToken:
