@@ -28,6 +28,9 @@ func (t Tags) Stringify() string {
 		if i > 0 {
 			builder.WriteString(" ")
 		}
+		if string(tag.Values) == "" {
+			continue
+		}
 		builder.WriteString(tag.Name)
 		builder.WriteString(":")
 		value := strconv.Quote(string(tag.Values))
