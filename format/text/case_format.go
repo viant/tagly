@@ -224,7 +224,7 @@ func (c CaseFormat) nextWord(offset int, src string) (int, string) {
 	wasSpecial := false
 	var wasUpper *bool
 	for i, r := range src[offset:] {
-		if unicode.IsNumber(r) {
+		if unicode.IsNumber(r) || r == '.' {
 			continue
 		}
 		if unicode.IsLetter(r) {
