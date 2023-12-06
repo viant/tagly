@@ -137,7 +137,7 @@ outer:
 				wasUpper = &isUpper
 				continue
 			}
-			if unicode.IsNumber(r) {
+			if unicode.IsNumber(r) || r == '.' {
 				continue
 			}
 			sep = string(r)
