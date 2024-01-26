@@ -77,6 +77,10 @@ func Parse(layout, value string) (time.Time, error) {
 			layout = layout[:len(value)]
 			t, err = time.Parse(layout, value)
 		}
+		if err != nil {
+			layout = "2006-01-02-07:00"
+			t, err = time.Parse(layout, value)
+		}
 	}
 	return t, err
 }
