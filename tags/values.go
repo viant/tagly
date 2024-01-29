@@ -2,6 +2,7 @@ package tags
 
 import (
 	"github.com/viant/parsly"
+	"strconv"
 	"strings"
 )
 
@@ -15,6 +16,9 @@ func (v Values) MatchPairs(onMatch func(key, value string) error) error {
 		key, value := matchPair(cursor)
 		if key == "" {
 			continue
+		}
+		if v, err := strconv.Unquote(value); err == nil {
+			value = v
 		}
 		if err := onMatch(key, value); err != nil {
 			return err
@@ -30,6 +34,9 @@ func (v Values) Match(onMatch func(value string) error) error {
 		value := matchElement(cursor)
 		if value == "" {
 			continue
+		}
+		if v, err := strconv.Unquote(value); err == nil {
+			value = v
 		}
 		if err := onMatch(value); err != nil {
 			return err
