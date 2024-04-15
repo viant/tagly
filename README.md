@@ -40,16 +40,16 @@ type (
 	}
 	Dummy struct {
 		ID       string    `format:"Id"`
-		At       time.Time `format:"tz=UTC,dateFormat:yyyy-MM-dd hh:mm`
+		At       time.Time `format:"tz=UTC,dateFormat=YYYY-MM-DD hh:mm"`
 		Internal bool      `format:"-"`
 		Bar      `format:",inline"`
 		AttrX    string `format:",caseFormat=upperdash"`
-		Other    string `format:",inline,dateFormat=yyyy-MM-dd" json:"JsonCustomizedName"`
+		Other    string `format:",inline,dateFormat=YYYY-MM-DD" json:"JsonCustomizedName"`
 	}
 )
 
 func ExampleOfFormatTag() {
-	tagValue := reflect.StructTag(`format:",inline,dateFormat=yyyy-MM-dd" json:"JsonCustomizedName"`)
+	tagValue := reflect.StructTag(`format:",inline,dateFormat=YYYY-MM-DD" json:"JsonCustomizedName"`)
 	tag, err := format.Parse(tagValue, "json")
 	if err != nil {
 		log.Fatal(err)
