@@ -7,9 +7,11 @@ import (
 
 var iso20220715DateFormatToRfc3339TimeLayoutReplacer = strings.NewReplacer(
 	"YYYY", "2006",
+	"yyyy", "2006",
 	"MM", "01",
 	"M", "1",
 	"DD", "02",
+	"dd", "02",
 	"D", "2",
 	"+hh:mm", "Z07:00",
 	"+hhmm", "Z0700",
