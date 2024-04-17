@@ -15,9 +15,9 @@ func TestValues_MatchPairs(t *testing.T) {
 		{
 
 			description: "enclosed",
-			input:       ",path,abc,ewrwe(1,2,3),3",
+			input:       ",path,abc,'ewrwe(1,2,3)',3",
 			expect: map[string]string{
-				"3": "", "abc": "", "ewrwe(1,2,3)": "", "path": "",
+				"3": "", "abc": "", "'ewrwe(1,2,3)'": "", "path": "",
 			},
 		},
 
