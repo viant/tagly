@@ -10,7 +10,7 @@ const (
 	comaTerminatorToken
 	scopeBlockToken
 	eqTerminatorToken
-
+	enclosedToken
 	quotedToken
 )
 
@@ -20,6 +20,7 @@ var (
 	eqTerminatorMatcher   = parsly.NewToken(eqTerminatorToken, "eq", matcher.NewTerminator('=', true))
 
 	scopeBlockMatcher = parsly.NewToken(scopeBlockToken, "{ .... }", matcher.NewBlock('{', '}', '\\'))
+	enclosedMatcher   = parsly.NewToken(enclosedToken, "( .... )", matcher.NewBlock('(', ')', '\\'))
 
 	quotedMatcher = parsly.NewToken(quotedToken, "' .... '", matcher.NewQuote('\'', '\\'))
 )
