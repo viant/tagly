@@ -23,6 +23,15 @@ func TestValues_MatchPairs(t *testing.T) {
 
 		{
 
+			description: "enclosed with equal",
+			input:       ",path,abc,(1,2=3,3),3",
+			expect: map[string]string{
+				"3": "", "abc": "", "(1,2=3,3)": "", "path": "",
+			},
+		},
+
+		{
+
 			description: "mixed",
 			input:       "name=abc",
 			expect: map[string]string{

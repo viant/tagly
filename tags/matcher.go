@@ -15,6 +15,13 @@ func matchPair(cursor *parsly.Cursor) (string, string) {
 	comaIndex := bytes.Index(cursor.Input[cursor.Pos:], []byte(","))
 	enclosedIndex := bytes.Index(cursor.Input[cursor.Pos:], []byte("("))
 	quotaIndex := bytes.Index(cursor.Input[cursor.Pos:], []byte("'"))
+
+	pos := cursor.Pos
+	if match := cursor.MatchAny(enclosedMatcher); match.Code == enclosedToken {
+		key = string(cursor.Input[pos:cursor.Pos])
+		return key, ""
+	}
+
 	if eqIndex == -1 {
 		if enclosedIndex != -1 && enclosedIndex < comaIndex && quotaIndex == -1 {
 			pos := cursor.Pos
