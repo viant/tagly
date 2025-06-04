@@ -12,6 +12,11 @@ func TestParse(t *testing.T) {
 		layout      string
 		input       string
 	}{
+
+		{
+			description: "go time with timezone",
+			input:       "2025-06-04T11:54:28.977155-07:00",
+		},
 		{
 			description: "go time",
 			input:       "2025-06-04T18:08:30.80335",

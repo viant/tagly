@@ -65,6 +65,13 @@ func Parse(layout, value string) (time.Time, error) {
 	if layout == "" {
 		layout = time.RFC3339 //TODO add layout autodetection for this case
 	}
+
+	if strings.Contains(value, ".") {
+		if layout == time.RFC3339 {
+			layout = time.RFC3339Nano
+		}
+	}
+
 	//adjust T fragment
 	if strings.Contains(value, "T") != strings.Contains(layout, "T") {
 		layout = strings.Replace(layout, "T", " ", 1)
