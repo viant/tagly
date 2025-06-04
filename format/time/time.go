@@ -71,7 +71,11 @@ func Parse(layout, value string) (time.Time, error) {
 		value = strings.Replace(value, "T", " ", 1)
 	}
 	t, err := time.ParseInLocation(layout, value, time.UTC)
+
+	originalLayout := layout
+
 	if err != nil {
+
 		if len(value) > len(layout) {
 			value = value[:len(layout)]
 			t, err = time.Parse(layout, value)
@@ -79,6 +83,18 @@ func Parse(layout, value string) (time.Time, error) {
 			layout = layout[:len(value)]
 			t, err = time.Parse(layout, value)
 		}
+
+		parseErr, ok := err.(*time.ParseError)
+		if ok && err != nil {
+			if parseErr.LayoutElem != "" {
+				if index := strings.LastIndex(originalLayout, parseErr.LayoutElem); index != -1 {
+					value = value[:index]
+					layout = originalLayout[:index]
+					t, err = time.Parse(layout, value)
+				}
+			}
+		}
+
 		if err != nil {
 			layout = "2006-01-02-07:00"
 			t, err = time.Parse(layout, value)
