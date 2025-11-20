@@ -30,25 +30,31 @@ var iso20220715DateFormatToRfc3339TimeLayoutReplacer = strings.NewReplacer(
 )
 
 var rfc3339TimeLayoutToIso20220715DateFormatReplacer = strings.NewReplacer(
+	// Year
 	"2006", "YYYY",
-	"Z07:00", "+hh:mm",
-	"Z0700", "+hhmm",
-	"Z07", "+hh",
-	"Z07:00", "-hh:mm",
-	"Z0700", "-hhmm",
+
+	// Time components
 	"15", "hh",
 	"04", "mm",
-	"4", "m",
 	"05", "ss",
+
+	// Fractional seconds
 	".999", ".SSS",
 	".99", ".SS",
 	".9", ".S",
-	"Z07", "-hh",
-	"Z07:00", "Z",
+
+	// Month/Day (order matters: longer tokens first)
 	"01", "MM",
-	"1", "M",
 	"02", "DD",
+	"1", "M",
 	"2", "D",
+	"4", "m",
+
+	// Time zone: map RFC3339 layout to generic 'Z' token
+	// Use longest first to avoid partial matches
+	"Z07:00", "Z",
+	"Z0700", "Z",
+	"Z07", "Z",
 )
 
 // DateFormatToTimeLayout converts ISO 2022-07-15 date format to RFC3339 time layout

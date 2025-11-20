@@ -1,7 +1,6 @@
 package format
 
 import (
-	"fmt"
 	"github.com/stretchr/testify/assert"
 	"reflect"
 	"testing"
@@ -29,8 +28,7 @@ func TestParse(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		tag, err := Parse(testCase.tag, testCase.tagName)
+		_, err := Parse(testCase.tag, testCase.tagName)
 		assert.Nil(t, err)
-		fmt.Printf("%+v\n", tag)
 	}
 }

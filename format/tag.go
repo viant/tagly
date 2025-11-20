@@ -2,12 +2,13 @@ package format
 
 import (
 	"fmt"
-	"github.com/viant/tagly/format/text"
-	ftime "github.com/viant/tagly/format/time"
-	"github.com/viant/tagly/tags"
 	"reflect"
 	"strings"
 	"time"
+
+	"github.com/viant/tagly/format/text"
+	ftime "github.com/viant/tagly/format/time"
+	"github.com/viant/tagly/tags"
 )
 
 const (
@@ -111,7 +112,7 @@ var tagKeys = map[string]bool{
 
 // IsValidTagKey returns true if value key
 func IsValidTagKey(key string) bool {
-	return tagKeys[key]
+	return tagKeys[strings.ToLower(key)]
 }
 
 // Parse parses format tag
@@ -126,7 +127,16 @@ func Parse(tag reflect.StructTag, names ...string) (*Tag, error) {
 		}
 		switch encoded {
 		case "-":
-			ret.Ignore = true
+			// For the primary format tag, a lone "-" is used to
+			// disable case formatting (ignoreCaseFormatter). For
+			// other tags, "-" means ignore the field entirely.
+			if name == TagName {
+				if err := ret.update("ignorecaseformatter", "", i == 0); err != nil {
+					return nil, err
+				}
+			} else {
+				ret.Ignore = true
+			}
 			continue
 		}
 
@@ -136,7 +146,16 @@ func Parse(tag reflect.StructTag, names ...string) (*Tag, error) {
 		}
 
 		if !strings.Contains(encoded, ",") && !strings.Contains(encoded, "=") {
-			ret.Name = encoded
+			// A single token without separators is usually a name, but
+			// some flags like ignoreCaseFormatter are expressed without
+			// an explicit value (e.g. `format:"ignoreCaseFormatter"`).
+			if strings.EqualFold(encoded, "ignoreCaseFormatter") {
+				if err := ret.update("ignorecaseformatter", "", i == 0); err != nil {
+					return nil, err
+				}
+			} else {
+				ret.Name = encoded
+			}
 			continue
 		}
 

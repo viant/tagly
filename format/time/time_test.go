@@ -1,7 +1,6 @@
 package time
 
 import (
-	"fmt"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -39,8 +38,7 @@ func TestParse(t *testing.T) {
 	//
 
 	for _, testCase := range testCases {
-		ts, err := Parse(testCase.layout, testCase.input)
+		_, err := Parse(testCase.layout, testCase.input)
 		assert.Nil(t, err, testCase.description)
-		fmt.Printf("%s\n", ts.String())
 	}
 }
