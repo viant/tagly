@@ -23,12 +23,20 @@ type (
 
 // Stringify returns stringified tags representations
 func (t Tags) Stringify() string {
+	return t.stringify(true)
+}
+
+// Literal renders a complete Go struct-tag literal, retaining explicitly empty
+// values. Stringify keeps its historical omission behavior for existing users.
+func (t Tags) Literal() string { return t.stringify(false) }
+
+func (t Tags) stringify(omitEmpty bool) string {
 	builder := strings.Builder{}
 	for i, tag := range t {
 		if i > 0 {
 			builder.WriteString(" ")
 		}
-		if string(tag.Values) == "" {
+		if omitEmpty && string(tag.Values) == "" {
 			continue
 		}
 		builder.WriteString(tag.Name)
@@ -118,6 +126,22 @@ func (t *Tags) Append(tag string, value string) {
 
 // NewTags create a tags for supplied tag literal
 func NewTags(tagLiteral string) Tags {
+	result, _ := parseTags(tagLiteral)
+	return result
+}
+
+// Parse parses an entire Go struct-tag literal. Unlike NewTags it rejects a
+// malformed suffix and returns no usable prefix when parsing fails. Repeated
+// tag names are retained; their semantics belong to the consuming owner.
+func Parse(tagLiteral string) (Tags, error) {
+	result, err := parseTags(tagLiteral)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func parseTags(tagLiteral string) (Tags, error) {
 	var result []*Tag
 	for tagLiteral != "" {
 		i := 0
@@ -133,7 +157,7 @@ func NewTags(tagLiteral string) Tags {
 			i++
 		}
 		if i == 0 || i+1 >= len(tagLiteral) || tagLiteral[i] != ':' || tagLiteral[i+1] != '"' {
-			break
+			return result, fmt.Errorf("invalid Go struct tag near %q", tagLiteral)
 		}
 		name := tagLiteral[:i]
 		tagLiteral = tagLiteral[i+1:]
@@ -145,18 +169,18 @@ func NewTags(tagLiteral string) Tags {
 			i++
 		}
 		if i >= len(tagLiteral) {
-			break
+			return result, fmt.Errorf("unterminated value for Go struct tag %q", name)
 		}
 		quotedValue := tagLiteral[:i+1]
 		tagLiteral = tagLiteral[i+1:]
 		value, err := strconv.Unquote(quotedValue)
 		if err != nil {
-			break
+			return result, fmt.Errorf("invalid value for Go struct tag %q: %w", name, err)
 		}
 		aTag := &Tag{Name: name, Values: Values(value)}
 		result = append(result, aTag)
 	}
-	return result
+	return result, nil
 }
 
 // NewTag creates a tag for supplied tag type
