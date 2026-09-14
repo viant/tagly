@@ -9,16 +9,24 @@ import (
 // Values represents tag values
 type Values string
 
-// MatchPairs matches paris separated by ,
+// MatchPairs matches pairs separated by commas, decoding Go-quoted values.
 func (v Values) MatchPairs(onMatch func(key, value string) error) error {
+	return v.MatchRawPairs(func(key, value string) error {
+		if decoded, err := strconv.Unquote(value); err == nil {
+			value = decoded
+		}
+		return onMatch(key, value)
+	})
+}
+
+// MatchRawPairs uses the same pair tokenizer as MatchPairs but preserves value
+// delimiters. Callers can retain SQL identifier quoting without reparsing tags.
+func (v Values) MatchRawPairs(onMatch func(key, value string) error) error {
 	cursor := parsly.NewCursor("", []byte(v), 0)
 	for cursor.Pos < len(cursor.Input) {
 		key, value := matchPair(cursor)
 		if key == "" {
 			continue
-		}
-		if v, err := strconv.Unquote(value); err == nil {
-			value = v
 		}
 		if err := onMatch(key, value); err != nil {
 			return err
