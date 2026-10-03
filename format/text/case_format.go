@@ -222,16 +222,29 @@ func (c CaseFormat) nextWord(offset int, src string) (int, string) {
 		return ret, separator
 	}
 	wasSpecial := false
+	separatorEnd := 0
+	hasLetter := false
+	hasNumber := false
 	var wasUpper *bool
 	for i, r := range src[offset:] {
 		if unicode.IsNumber(r) || r == '.' {
+			if wasSpecial && unicode.IsNumber(r) {
+				// Start the numeric token immediately after the separator,
+				// including any leading decimal point in the token.
+				ret = separatorEnd
+				break
+			}
+			hasNumber = hasNumber || unicode.IsNumber(r)
 			continue
 		}
 		if unicode.IsLetter(r) {
-			if wasSpecial {
+			if wasSpecial || (hasNumber && !hasLetter) {
+				// Keep a leading numeric token separate so the following word
+				// receives normal case conversion (for example, 14Day).
 				ret = i
 				break
 			}
+			hasLetter = true
 			isUpper := unicode.IsUpper(r)
 			if i > 0 { //word boundry detection based on letter case changes
 				if wasUpper != nil && isUpper != *wasUpper {
@@ -244,6 +257,7 @@ func (c CaseFormat) nextWord(offset int, src string) (int, string) {
 			continue
 		}
 		separator = string(r)
+		separatorEnd = i + len(separator)
 		wasSpecial = true
 	}
 	return ret, separator

@@ -132,6 +132,20 @@ func ExampleCaseFormatter() {
 
 ```
 
+Numeric segments are preserved during case conversion, including after underscores.
+For example, converting to lower camel case produces:
+
+| Input | Output |
+| --- | --- |
+| `SampleSeen_1Day` | `sampleSeen1Day` |
+| `SampleSeen_7Day` | `sampleSeen7Day` |
+| `SampleSeen_14Day` | `sampleSeen14Day` |
+
+Compatibility note: earlier versions could drop the last digit after a separator,
+producing names such as `sampleSeen_Day` or `sampleSeen_1Day`. Applications that
+use formatted names as JSON keys must coordinate adoption with their clients.
+Regenerate any explicit JSON tags derived from the affected names when upgrading.
+
 ## Common tag:
 
 - [fomat tag](format): tag to define output format 
@@ -154,4 +168,3 @@ all compatible with Apache License, Version 2. Please see individual files for d
 ## Credits and Acknowledgements
 
 **Library Author:** Adrian Witas
-
