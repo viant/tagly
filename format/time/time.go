@@ -83,6 +83,13 @@ func Parse(layout, value string) (time.Time, error) {
 		layout = strings.Replace(layout, "T", " ", 1)
 		value = strings.Replace(value, "T", " ", 1)
 	}
+	// If layout expects timezone but value does not provide one, try without timezone
+	if strings.Contains(layout, "Z07") && !containsTZ(value) {
+		layout = strings.Replace(layout, "Z07:00", "", 1)
+		layout = strings.Replace(layout, "Z0700", "", 1)
+		layout = strings.Replace(layout, "Z07", "", 1)
+		layout = strings.TrimSpace(layout)
+	}
 	t, err := time.ParseInLocation(layout, value, time.UTC)
 
 	originalLayout := layout
@@ -112,6 +119,28 @@ func Parse(layout, value string) (time.Time, error) {
 			layout = "2006-01-02-07:00"
 			t, err = time.Parse(layout, value)
 		}
+
+		// Final pragmatic fallback: try basic human layout without TZ if still failing
+		if err != nil {
+			if t2, err2 := time.ParseInLocation("2006-01-02 15:04:05", value, time.UTC); err2 == nil {
+				return t2, nil
+			}
+		}
 	}
 	return t, err
+}
+
+// containsTZ reports whether value contains an explicit timezone suffix (Z or ±hh[:]mm)
+func containsTZ(value string) bool {
+	if strings.Contains(value, "Z") {
+		return true
+	}
+	// check last ~6 chars for + or - (to avoid date hyphens)
+	n := len(value)
+	start := n - 6
+	if start < 0 {
+		start = 0
+	}
+	tail := value[start:]
+	return strings.Contains(tail, "+") || strings.Contains(tail, "-")
 }
