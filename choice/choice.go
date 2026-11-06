@@ -1,5 +1,6 @@
 // Package choice owns ordered, typed scalar metadata declared by repeated
-// Go struct choice tags. It does not validate runtime input values.
+// Go struct choice tags and opt-in ordinal/literal wire mappings. Ordinary
+// choice metadata does not install runtime membership validation.
 package choice
 
 import (
@@ -108,6 +109,16 @@ func FromStrings(t reflect.Type, args []string) (*Constraint, error) {
 }
 
 func Parse(tag reflect.StructTag, t reflect.Type) (*Constraint, error) {
+	if enumeration, err := ParseEnum(tag, t); err != nil {
+		return nil, err
+	} else if enumeration != nil {
+		values, err := enumeration.StorageValues()
+		if err != nil {
+			return nil, err
+		}
+		return Normalize(enumeration.Type, values)
+	}
+
 	// Metadata without choice remains unaffected, even if another tag owner uses
 	// a nonstandard spelling. Choice presence invokes the strict tag parser.
 	if !strings.Contains(string(tag), `choice:`) {
