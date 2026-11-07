@@ -22,6 +22,9 @@ type Tag struct {
 	//to format output name with specified CaseFormat
 
 	CaseFormat string `tag:"caseFormat,omitempty"`
+	// InputNames lists exact, pipe-separated decode-only aliases. It does not
+	// change Name or the canonical output property selected by the json tag.
+	InputNames string `tag:"inputNames,omitempty"`
 
 	DateFormat string `tag:"dataFormat,omitempty"`
 	TimeLayout string `tag:"timeLayout,omitempty"`
@@ -60,6 +63,18 @@ func (t *Tag) update(key string, value string, strictMode bool) error {
 	switch strings.ToLower(key) {
 	case "name":
 		t.Name = value
+	case "inputnames":
+		seen := make(map[string]bool)
+		for _, name := range strings.Split(value, "|") {
+			if name == "" {
+				return fmt.Errorf("inputNames contains an empty alias")
+			}
+			if seen[name] {
+				return fmt.Errorf("inputNames contains duplicate alias %q", name)
+			}
+			seen[name] = true
+		}
+		t.InputNames = value
 	case "dateformat", "isodateformat", "iso20220715":
 		t.DateFormat = value
 		t.TimeLayout = ftime.DateFormatToTimeLayout(value)
@@ -118,6 +133,7 @@ func (t *Tag) update(key string, value string, strictMode bool) error {
 }
 
 var tagKeys = map[string]bool{
+	"inputnames":       true,
 	"timeinputlayouts": true, "timeepoch": true, "timeempty": true,
 	"-":             true,
 	"name":          true,
