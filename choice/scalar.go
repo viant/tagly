@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -23,6 +24,10 @@ type enumAlias struct {
 // simple-fold equivalents when selected.
 // Ordinary enum modes continue to use WireType and WireValues.
 type InputDomain struct {
+	OpenIntegers       bool
+	OpenStrings        bool
+	Minimum            json.Number
+	Maximum            json.Number
 	Integers           []json.Number
 	Strings            []string
 	StringAlternatives []StringAlternative
@@ -40,14 +45,40 @@ type StringAlternative struct {
 func (e *Enum) parseAliases(tag reflect.StructTag) error {
 	_, hasAlias := tag.Lookup("enumAlias")
 	_, hasCase := tag.Lookup("enumCase")
+	integerPolicy, hasInteger := tag.Lookup("enumInteger")
+	stringPolicy, hasUnknown := tag.Lookup("enumUnknownString")
 	if e.Accept != Scalar {
-		if hasAlias || hasCase {
-			return fmt.Errorf("enumAlias and enumCase require enumAccept scalar")
+		if hasAlias || hasCase || hasInteger || hasUnknown {
+			return fmt.Errorf("enum input policies require enumAccept scalar")
 		}
 		return nil
 	}
+	if hasInteger || hasUnknown {
+		if e.Type.Kind() == reflect.String || e.Style != Ordinal {
+			return fmt.Errorf("open scalar policies require integer storage and ordinal output")
+		}
+		if hasInteger {
+			if integerPolicy != "passthrough" {
+				return fmt.Errorf("unsupported enumInteger %q", integerPolicy)
+			}
+			e.integerPassthrough = true
+		}
+		if hasUnknown {
+			number, err := ordinal(stringPolicy)
+			if err != nil {
+				return err
+			}
+			if _, err = e.storage(number); err != nil {
+				return err
+			}
+			e.unknownString = &number
+		}
+	}
 	switch tag.Get("enumCase") {
+
 	case "":
+	case "upper":
+		e.upper = true
 	case "fold":
 		e.fold = true
 	default:
@@ -92,7 +123,7 @@ func (e *Enum) parseAliases(tag reflect.StructTag) error {
 }
 
 func (e *Enum) equalInput(a, b string) bool {
-	return a == b || e.fold && strings.EqualFold(a, b)
+	return a == b || e.fold && strings.EqualFold(a, b) || e.upper && strings.ToUpper(a) == strings.ToUpper(b)
 }
 
 func (e *Enum) addAlias(text string, index int) error {
@@ -117,6 +148,12 @@ func (e *Enum) decodeScalar(value any) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+		if e.integerPassthrough {
+			if _, err := e.storage(code); err != nil {
+				return nil, err
+			}
+			return json.Marshal(code)
+		}
 		for i, entry := range e.Entries {
 			if entry.Ordinal == code {
 				index = i
@@ -132,6 +169,11 @@ func (e *Enum) decodeScalar(value any) ([]byte, error) {
 		}
 	default:
 		return nil, fmt.Errorf("scalar enum input requires a JSON integer or string")
+	}
+	if index < 0 && e.unknownString != nil {
+		if _, ok := value.(string); ok {
+			return json.Marshal(*e.unknownString)
+		}
 	}
 	if index < 0 {
 		return nil, fmt.Errorf("unknown enum input %v", value)
@@ -153,30 +195,49 @@ func (e *Enum) InputDomain() *InputDomain {
 	if e.Accept != Scalar {
 		return nil
 	}
-	result := &InputDomain{}
+	result := &InputDomain{OpenIntegers: e.integerPassthrough, OpenStrings: e.unknownString != nil}
+	if result.OpenIntegers {
+		result.Minimum, result.Maximum = e.integerBounds()
+	}
 	for _, entry := range e.Entries {
 		result.Integers = append(result.Integers, entry.Ordinal)
+	}
+	if result.OpenStrings {
+		return result
 	}
 	for _, alias := range e.aliases {
 		result.Strings = append(result.Strings, alias.text)
 		result.StringAlternatives = append(result.StringAlternatives, StringAlternative{
-			Pattern: "^(?:" + enumInputPattern(alias.text, e.fold) + ")$",
+			Pattern: "^(?:" + enumInputPattern(alias.text, e.fold, e.upper) + ")$",
 			Length:  utf8.RuneCountInString(alias.text),
 		})
 	}
 	return result
 }
 
-func enumInputPattern(text string, fold bool) string {
-	if !fold {
+func enumInputPattern(text string, fold, upper bool) string {
+	if !fold && !upper {
 		return regexp.QuoteMeta(text)
 	}
 	var result strings.Builder
 	for _, r := range text {
 		group := []rune{r}
-		for next := unicode.SimpleFold(r); next != r; next = unicode.SimpleFold(next) {
-			group = append(group, next)
+		if upper {
+			normalized := unicode.ToUpper(r)
+			group = []rune{normalized}
+			for _, span := range unicode.CaseRanges {
+				for candidate := rune(span.Lo); candidate <= rune(span.Hi); candidate++ {
+					if candidate != normalized && unicode.ToUpper(candidate) == normalized {
+						group = append(group, candidate)
+					}
+				}
+			}
+		} else {
+			for next := unicode.SimpleFold(r); next != r; next = unicode.SimpleFold(next) {
+				group = append(group, next)
+			}
 		}
+
 		if len(group) == 1 {
 			result.WriteString(regexp.QuoteMeta(string(r)))
 			continue
@@ -189,4 +250,15 @@ func enumInputPattern(text string, fold bool) string {
 		result.WriteByte(']')
 	}
 	return result.String()
+}
+
+func (e *Enum) integerBounds() (json.Number, json.Number) {
+	bits := e.Type.Bits()
+	if e.Type.Kind() >= reflect.Int && e.Type.Kind() <= reflect.Int64 {
+		maximum := int64(^uint64(0) >> uint(65-bits))
+		minimum := -maximum - 1
+		return json.Number(strconv.FormatInt(minimum, 10)), json.Number(strconv.FormatInt(maximum, 10))
+	}
+	maximum := ^uint64(0) >> uint(64-bits)
+	return "0", json.Number(strconv.FormatUint(maximum, 10))
 }

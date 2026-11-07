@@ -53,3 +53,24 @@ JSON Schema integer validation is mathematical and cannot distinguish `1` from
 state; external code should obtain plans through `ParseEnum`, or use keyed
 construction for its exported fields. External unkeyed `Enum` literals require
 updating when adopting this version.
+
+## Explicit open integer policies
+
+Integer storage with ordinal output can opt into `enumInteger:"passthrough"`
+and/or `enumUnknownString:"0"`. Each is independent and requires scalar input.
+The former accepts every JSON integer fitting the actual Go storage width; the
+latter maps any otherwise unknown string to the specified storage-valid integer,
+which need not be a declared choice. Neither trims strings nor parses quoted
+numbers. Null remains decoder-owned. Defaults remain strict.
+
+`enumCase:"upper"` compares `strings.ToUpper` results, including its Unicode
+mapping (for example dotless i). It is distinct from `fold`. Alias collisions
+are rejected under the selected comparison. Known names still take precedence
+over the unknown-string fallback.
+
+`InputDomain.OpenIntegers` and `OpenStrings` describe unrestricted branches.
+Consumers must not apply the finite choice lists to those branches. Integer
+bounds retain exact decimal tokens in `Minimum` and `Maximum`; consumers using
+floating-point schema bounds should emit only exactly representable bounds.
+Open ordinal output returns no finite `WireValues(false)` restriction. An absent
+finite enum means unrestricted storage values, never an enum containing only null.

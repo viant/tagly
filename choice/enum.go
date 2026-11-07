@@ -29,11 +29,14 @@ type Entry struct {
 
 // Enum keeps storage independent from input/output JSON representations.
 type Enum struct {
-	Type          reflect.Type
-	Accept, Style Style
-	Entries       []Entry
-	aliases       []enumAlias
-	fold          bool
+	Type               reflect.Type
+	Accept, Style      Style
+	Entries            []Entry
+	aliases            []enumAlias
+	fold               bool
+	upper              bool
+	integerPassthrough bool
+	unknownString      *json.Number
 }
 
 func enumStyle(raw string, fallback Style) (Style, error) {
@@ -62,7 +65,7 @@ func defaultStyle(t reflect.Type) Style {
 	return Ordinal
 }
 func ParseEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
-	if !strings.Contains(string(tag), `choice:`) && !strings.Contains(string(tag), `enumStyle:`) && !strings.Contains(string(tag), `enumAccept:`) && !strings.Contains(string(tag), `enumAlias:`) && !strings.Contains(string(tag), `enumCase:`) {
+	if !strings.Contains(string(tag), `choice:`) && !strings.Contains(string(tag), `enumStyle:`) && !strings.Contains(string(tag), `enumAccept:`) && !strings.Contains(string(tag), `enumAlias:`) && !strings.Contains(string(tag), `enumCase:`) && !strings.Contains(string(tag), `enumInteger:`) && !strings.Contains(string(tag), `enumUnknownString:`) {
 		return nil, nil
 	}
 	values, err := Tags(tag)
@@ -77,7 +80,9 @@ func ParseEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 	for base != nil && base.Kind() == reflect.Pointer {
 		base = base.Elem()
 	}
-	active := hasStyle || hasAccept || hasAlias || hasCase
+	_, hasInteger := tag.Lookup("enumInteger")
+	_, hasUnknown := tag.Lookup("enumUnknownString")
+	active := hasStyle || hasAccept || hasAlias || hasCase || hasInteger || hasUnknown
 	legacyNumeric := base != nil && base.Kind() != reflect.String
 	for _, value := range values {
 		if prefix, _, ok := strings.Cut(value, ":"); ok {
@@ -199,6 +204,9 @@ func (e *Enum) WireType(input bool) string {
 	return "integer"
 }
 func (e *Enum) WireValues(input bool) []any {
+	if !input && e.Style == Ordinal && (e.integerPassthrough || e.unknownString != nil) {
+		return nil
+	}
 	style := e.Style
 	if input {
 		style = e.Accept
