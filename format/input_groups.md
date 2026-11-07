@@ -46,3 +46,27 @@ spellings. The excluded spelling must be a declared alias and must differ from
 its own exact canonical name. Exact canonical spelling and other fields' canonical
 ownership remain protected. Resolution order is exact canonical, exact exclusions,
 folded canonical, then aliases. No exclusion affects unconfigured fields.
+
+## Ancestor presence guards
+
+`format:"inputUnless=../Canonical"` suppresses the annotated field when the
+visible Go field `Canonical` is admitted in the enclosing struct object.
+Additional `../` segments select further enclosing struct objects; pointers,
+map values, and slice elements do not add levels. Targets use exported Go names,
+not JSON aliases. Invalid syntax, unavailable depths, and hidden or missing
+ancestor targets are configuration errors even for an empty input.
+
+Presence is determined by the existing native field-selection plan before value
+conversion: an explicit null counts, including a null subsequently omitted by a
+conversion policy. Excluded aliases, aliases with ignored shapes, and losing
+input-group members do not count. Guarded fields are removed before their own
+alias/group selection, conversion, narrowing, and presence marking. The remaining
+active occurrences retain existing deterministic duplicate and syntax validation.
+No guard is implied for untagged fields.
+
+Owners compile `InputScopePlan` alongside their ordinary field plans and validate
+it with `ValidateInputScopePlan`; runtime selection uses `SelectScoped` with
+nearest-first `InputScope` values. Recursive contexts are validated, and schema
+owners may conservatively admit guarded values while documenting that native
+runtime selection determines which values undergo validation. Generic JSON and
+output schemas must not silently adopt native input policies.

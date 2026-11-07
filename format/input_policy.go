@@ -16,10 +16,11 @@ type inputNameRule struct {
 	exact                  bool
 	group                  string
 	priority               uint64
+	guard                  InputGuard
 }
 
 func (t *Tag) HasInputNamePolicy() bool {
-	return t != nil && (t.InputNamesPriority != "" || t.InputNamesKinds != "" || t.InputNamesCase != "" || t.InputNamesExclude != "" || t.InputGroup != "" || t.InputPriority != "" || t.InputCase != "")
+	return t != nil && (t.InputNamesPriority != "" || t.InputNamesKinds != "" || t.InputNamesCase != "" || t.InputNamesExclude != "" || t.InputGroup != "" || t.InputPriority != "" || t.InputCase != "" || t.InputUnless != "")
 }
 func parseInputKinds(value string) (map[string]bool, error) {
 	r := map[string]bool{}
@@ -50,6 +51,11 @@ func (m *InputNameMatcher) compilePolicies(fields []InputName, policies []*Tag) 
 			continue
 		}
 		p := policies[i]
+		var guardErr error
+		r.guard, guardErr = p.InputGuard()
+		if guardErr != nil {
+			return guardErr
+		}
 		if (p.InputNamesPriority != "" || p.InputNamesKinds != "" || p.InputNamesCase != "" || p.InputNamesExclude != "") && field.Aliases == "" {
 			return fmt.Errorf("input name policies require aliases for %s", field.Name)
 		}

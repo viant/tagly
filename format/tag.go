@@ -31,6 +31,7 @@ type Tag struct {
 	InputNamesExclude  string `tag:"inputNamesExclude,omitempty"`
 	InputGroup         string `tag:"inputGroup,omitempty"`
 	InputPriority      string `tag:"inputPriority,omitempty"`
+	InputUnless        string `tag:"inputUnless,omitempty"`
 	InputCase          string `tag:"inputCase,omitempty"`
 
 	DateFormat string `tag:"dataFormat,omitempty"`
@@ -70,6 +71,11 @@ func (t *Tag) update(key string, value string, strictMode bool) error {
 	switch strings.ToLower(key) {
 	case "name":
 		t.Name = value
+	case "inputunless":
+		if _, err := parseInputGuard(value); err != nil {
+			return err
+		}
+		t.InputUnless = value
 	case "inputgroup":
 		if value == "" || strings.TrimSpace(value) != value {
 			return fmt.Errorf("inputGroup requires a nonempty trimmed name")
