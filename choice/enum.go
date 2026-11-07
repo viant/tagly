@@ -102,7 +102,7 @@ func ParseEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 	default:
 		return nil, fmt.Errorf("enum requires integer or string storage, got %s", base)
 	}
-	for _, owner := range []reflect.Type{reflect.TypeFor[json.Marshaler](), reflect.TypeFor[json.Unmarshaler](), reflect.TypeFor[encoding.TextMarshaler](), reflect.TypeFor[encoding.TextUnmarshaler]()} {
+	for _, owner := range []reflect.Type{reflect.TypeOf((*json.Marshaler)(nil)).Elem(), reflect.TypeOf((*json.Unmarshaler)(nil)).Elem(), reflect.TypeOf((*encoding.TextMarshaler)(nil)).Elem(), reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()} {
 		if base.Implements(owner) || reflect.PointerTo(base).Implements(owner) {
 			return nil, fmt.Errorf("enum cannot override custom JSON/Text owner %s", base)
 		}
@@ -326,7 +326,7 @@ func HasEnum(t reflect.Type) bool {
 		if t.Kind() != reflect.Struct {
 			return false
 		}
-		for _, owner := range []reflect.Type{reflect.TypeFor[json.Marshaler](), reflect.TypeFor[json.Unmarshaler]()} {
+		for _, owner := range []reflect.Type{reflect.TypeOf((*json.Marshaler)(nil)).Elem(), reflect.TypeOf((*json.Unmarshaler)(nil)).Elem()} {
 			if t.Implements(owner) || reflect.PointerTo(t).Implements(owner) {
 				return false
 			}

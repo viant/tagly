@@ -14,11 +14,11 @@ func TestEnumDeclarationsAndIndependentWireStyles(t *testing.T) {
 		input, output string
 		stored        any
 	}{
-		{"integer storage", reflect.TypeFor[int](), `choice:"0:draft" choice:"10:active" enumAccept:"literal" enumStyle:"ordinal"`, `"active"`, `10`, 10},
-		{"string storage", reflect.TypeFor[string](), `choice:"0:draft" choice:"10:active" enumAccept:"ordinal" enumStyle:"literal"`, `10`, `"active"`, "active"},
-		{"opposite output", reflect.TypeFor[int](), `choice:"0:draft" choice:"10:active" enumAccept:"ordinal" enumStyle:"literal"`, `10`, `"active"`, 10},
-		{"implicit zero", reflect.TypeFor[int](), `choice:"draft" choice:"active" enumAccept:"literal" enumStyle:"ordinal"`, `"draft"`, `0`, 0},
-		{"string ordinal output", reflect.TypeFor[string](), `choice:"draft" choice:"active" enumAccept:"literal" enumStyle:"ordinal"`, `"active"`, `1`, "active"},
+		{"integer storage", reflect.TypeOf((*int)(nil)).Elem(), `choice:"0:draft" choice:"10:active" enumAccept:"literal" enumStyle:"ordinal"`, `"active"`, `10`, 10},
+		{"string storage", reflect.TypeOf((*string)(nil)).Elem(), `choice:"0:draft" choice:"10:active" enumAccept:"ordinal" enumStyle:"literal"`, `10`, `"active"`, "active"},
+		{"opposite output", reflect.TypeOf((*int)(nil)).Elem(), `choice:"0:draft" choice:"10:active" enumAccept:"ordinal" enumStyle:"literal"`, `10`, `"active"`, 10},
+		{"implicit zero", reflect.TypeOf((*int)(nil)).Elem(), `choice:"draft" choice:"active" enumAccept:"literal" enumStyle:"ordinal"`, `"draft"`, `0`, 0},
+		{"string ordinal output", reflect.TypeOf((*string)(nil)).Elem(), `choice:"draft" choice:"active" enumAccept:"literal" enumStyle:"ordinal"`, `"active"`, `1`, "active"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			plan, err := ParseEnum(test.tag, test.typ)
@@ -55,11 +55,11 @@ func TestEnumRejectsAmbiguousStyleAndInvalidMappings(t *testing.T) {
 		`choice:"0:a" choice:"10:a"`,
 		`enumStyle:"literal"`,
 	} {
-		if _, err := ParseEnum(tag, reflect.TypeFor[int]()); err == nil {
+		if _, err := ParseEnum(tag, reflect.TypeOf((*int)(nil)).Elem()); err == nil {
 			t.Fatalf("accepted %s", tag)
 		}
 	}
-	plan, err := ParseEnum(`choice:"10:active" enumAccept:"literal"`, reflect.TypeFor[int]())
+	plan, err := ParseEnum(`choice:"10:active" enumAccept:"literal"`, reflect.TypeOf((*int)(nil)).Elem())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,11 +68,11 @@ func TestEnumRejectsAmbiguousStyleAndInvalidMappings(t *testing.T) {
 			t.Fatal(raw)
 		}
 	}
-	numeric, err := Parse(`choice:"3" choice:"7"`, reflect.TypeFor[int]())
+	numeric, err := Parse(`choice:"3" choice:"7"`, reflect.TypeOf((*int)(nil)).Elem())
 	if err != nil || !reflect.DeepEqual(numeric.Values, []any{3, 7}) {
 		t.Fatal("legacy numeric choices renumbered", err)
 	}
-	explicit, err := ParseEnum(`choice:"draft" choice:"10:active" choice:"paused"`, reflect.TypeFor[int]())
+	explicit, err := ParseEnum(`choice:"draft" choice:"10:active" choice:"paused"`, reflect.TypeOf((*int)(nil)).Elem())
 	if err != nil {
 		t.Fatal(err)
 	}
