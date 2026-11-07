@@ -29,6 +29,9 @@ type Tag struct {
 	InputNamesKinds    string `tag:"inputNamesKinds,omitempty"`
 	InputNamesCase     string `tag:"inputNamesCase,omitempty"`
 	InputNamesExclude  string `tag:"inputNamesExclude,omitempty"`
+	InputGroup         string `tag:"inputGroup,omitempty"`
+	InputPriority      string `tag:"inputPriority,omitempty"`
+	InputCase          string `tag:"inputCase,omitempty"`
 
 	DateFormat string `tag:"dataFormat,omitempty"`
 	TimeLayout string `tag:"timeLayout,omitempty"`
@@ -67,6 +70,21 @@ func (t *Tag) update(key string, value string, strictMode bool) error {
 	switch strings.ToLower(key) {
 	case "name":
 		t.Name = value
+	case "inputgroup":
+		if value == "" || strings.TrimSpace(value) != value {
+			return fmt.Errorf("inputGroup requires a nonempty trimmed name")
+		}
+		t.InputGroup = value
+	case "inputpriority":
+		if _, err := inputPriority(value); err != nil {
+			return err
+		}
+		t.InputPriority = value
+	case "inputcase":
+		if value != "exact" {
+			return fmt.Errorf("unsupported inputCase %q", value)
+		}
+		t.InputCase = value
 	case "inputnames":
 		if _, err := parseInputNames(value); err != nil {
 			return err
@@ -222,7 +240,7 @@ func Parse(tag reflect.StructTag, names ...string) (*Tag, error) {
 			return nil, err
 		}
 	}
-	if ret.HasInputNamePolicy() && ret.InputNames == "" {
+	if (ret.InputNamesPriority != "" || ret.InputNamesKinds != "" || ret.InputNamesCase != "" || ret.InputNamesExclude != "") && ret.InputNames == "" {
 		return nil, fmt.Errorf("input name policies require inputNames")
 	}
 	return ret, nil

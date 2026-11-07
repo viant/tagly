@@ -2,6 +2,7 @@ package format
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -12,10 +13,13 @@ type inputNameRule struct {
 	aliases, exclude       []string
 	kinds                  map[string]bool
 	canonical, alias, fold bool
+	exact                  bool
+	group                  string
+	priority               uint64
 }
 
 func (t *Tag) HasInputNamePolicy() bool {
-	return t != nil && (t.InputNamesPriority != "" || t.InputNamesKinds != "" || t.InputNamesCase != "" || t.InputNamesExclude != "")
+	return t != nil && (t.InputNamesPriority != "" || t.InputNamesKinds != "" || t.InputNamesCase != "" || t.InputNamesExclude != "" || t.InputGroup != "" || t.InputPriority != "" || t.InputCase != "")
 }
 func parseInputKinds(value string) (map[string]bool, error) {
 	r := map[string]bool{}
@@ -46,7 +50,7 @@ func (m *InputNameMatcher) compilePolicies(fields []InputName, policies []*Tag) 
 			continue
 		}
 		p := policies[i]
-		if p.HasInputNamePolicy() && field.Aliases == "" {
+		if (p.InputNamesPriority != "" || p.InputNamesKinds != "" || p.InputNamesCase != "" || p.InputNamesExclude != "") && field.Aliases == "" {
 			return fmt.Errorf("input name policies require aliases for %s", field.Name)
 		}
 		if p.InputNamesPriority != "" && p.InputNamesPriority != "canonical" && p.InputNamesPriority != "alias" {
@@ -54,6 +58,29 @@ func (m *InputNameMatcher) compilePolicies(fields []InputName, policies []*Tag) 
 		}
 		if p.InputNamesCase != "" && p.InputNamesCase != "fold" {
 			return fmt.Errorf("unsupported input name case")
+		}
+		if (p.InputGroup == "") != (p.InputPriority == "") {
+			return fmt.Errorf("inputGroup and inputPriority must be supplied together for %s", field.Name)
+		}
+		if p.InputCase != "" && p.InputCase != "exact" {
+			return fmt.Errorf("unsupported inputCase %q", p.InputCase)
+		}
+		r.exact = p.InputCase == "exact"
+		if p.InputGroup != "" {
+			if strings.TrimSpace(p.InputGroup) != p.InputGroup {
+				return fmt.Errorf("inputGroup requires a trimmed name")
+			}
+			var err error
+			r.priority, err = inputPriority(p.InputPriority)
+			if err != nil {
+				return err
+			}
+			r.group = p.InputGroup
+			for j := 0; j < i; j++ {
+				if m.rules[j].group == r.group && m.rules[j].priority == r.priority {
+					return fmt.Errorf("duplicate priority %s in inputGroup %s", p.InputPriority, r.group)
+				}
+			}
 		}
 		r.canonical = p.InputNamesPriority == "canonical"
 		r.alias = p.InputNamesPriority == "alias"
@@ -80,8 +107,8 @@ func (m *InputNameMatcher) compilePolicies(fields []InputName, policies []*Tag) 
 				if !matched {
 					return fmt.Errorf("excluded name %q is not an alias of %s", excluded, field.Name)
 				}
-				for _, canonical := range m.names {
-					if strings.EqualFold(excluded, canonical) {
+				for owner, canonical := range m.names {
+					if excluded == canonical || owner != i && strings.EqualFold(excluded, canonical) {
 						return fmt.Errorf("excluded alias %q conflicts with canonical field", excluded)
 					}
 				}
@@ -115,16 +142,16 @@ func (m *InputNameMatcher) Classify(name string) (int, bool, bool) {
 			return i, false, false
 		}
 	}
-	for i, canonical := range m.names {
-		if strings.EqualFold(name, canonical) {
-			return i, false, false
-		}
-	}
 	for _, r := range m.rules {
 		for _, excluded := range r.exclude {
 			if name == excluded {
 				return -1, true, true
 			}
+		}
+	}
+	for i, canonical := range m.names {
+		if !m.rules[i].exact && strings.EqualFold(name, canonical) {
+			return i, false, false
 		}
 	}
 	for i, r := range m.rules {
@@ -169,5 +196,51 @@ func (m *InputNameMatcher) Select(members []InputMember) []bool {
 		}
 		result[i] = (!r.canonical || !canonical[index]) && (len(r.kinds) == 0 || r.kinds[member.Kind])
 	}
+	winners := map[string]int{}
+	for i, member := range members {
+		if !result[i] {
+			continue
+		}
+		index, _, _ := m.Classify(member.Name)
+		if index < 0 {
+			continue
+		}
+		r := m.rules[index]
+		if r.group == "" {
+			continue
+		}
+		prior, ok := winners[r.group]
+		if !ok || r.priority > m.rules[prior].priority {
+			winners[r.group] = index
+		}
+	}
+	for i, member := range members {
+		if !result[i] {
+			continue
+		}
+		index, _, _ := m.Classify(member.Name)
+		if index >= 0 {
+			r := m.rules[index]
+			if r.group != "" && winners[r.group] != index {
+				result[i] = false
+			}
+		}
+	}
 	return result
+}
+
+func inputPriority(value string) (uint64, error) {
+	if value == "" {
+		return 0, fmt.Errorf("inputPriority requires a nonnegative decimal uint32")
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return 0, fmt.Errorf("invalid inputPriority %q", value)
+		}
+	}
+	n, err := strconv.ParseUint(value, 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("invalid inputPriority %q: %w", value, err)
+	}
+	return n, nil
 }
