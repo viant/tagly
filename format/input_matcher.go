@@ -15,14 +15,16 @@ type InputName struct {
 // InputNameMatcher resolves admitted object members to canonical field indexes.
 // It owns its metadata and is safe for concurrent use after construction.
 type InputNameMatcher struct {
-	names []string
-	exact map[string]int
+	names    []string
+	exact    map[string]int
+	rules    []inputNameRule
+	policies bool
 }
 
 // NewInputNameMatcher retains canonical exact/folded lookup, adding only exact
 // aliases. The caller must supply the selected fields in canonical lookup order;
 // this matcher does not select fields or grant visibility to omitted fields.
-func NewInputNameMatcher(fields []InputName) (*InputNameMatcher, error) {
+func NewInputNameMatcher(fields []InputName, policies ...*Tag) (*InputNameMatcher, error) {
 	m := &InputNameMatcher{names: make([]string, len(fields)), exact: make(map[string]int)}
 	for i, field := range fields {
 		m.names[i] = field.Name
@@ -50,6 +52,9 @@ func NewInputNameMatcher(fields []InputName) (*InputNameMatcher, error) {
 			m.exact[alias] = i
 		}
 	}
+	if err := m.compilePolicies(fields, policies); err != nil {
+		return nil, err
+	}
 	return m, nil
 }
 
@@ -58,6 +63,13 @@ func NewInputNameMatcher(fields []InputName) (*InputNameMatcher, error) {
 func (m *InputNameMatcher) Match(name string) int {
 	if m == nil {
 		return -1
+	}
+	if m.policies {
+		index, _, excluded := m.Classify(name)
+		if excluded {
+			return -1
+		}
+		return index
 	}
 	if index, ok := m.exact[name]; ok {
 		return index

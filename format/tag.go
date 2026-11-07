@@ -24,7 +24,11 @@ type Tag struct {
 	CaseFormat string `tag:"caseFormat,omitempty"`
 	// InputNames lists exact, pipe-separated decode-only aliases. It does not
 	// change Name or the canonical output property selected by the json tag.
-	InputNames string `tag:"inputNames,omitempty"`
+	InputNames         string `tag:"inputNames,omitempty"`
+	InputNamesPriority string `tag:"inputNamesPriority,omitempty"`
+	InputNamesKinds    string `tag:"inputNamesKinds,omitempty"`
+	InputNamesCase     string `tag:"inputNamesCase,omitempty"`
+	InputNamesExclude  string `tag:"inputNamesExclude,omitempty"`
 
 	DateFormat string `tag:"dataFormat,omitempty"`
 	TimeLayout string `tag:"timeLayout,omitempty"`
@@ -68,6 +72,26 @@ func (t *Tag) update(key string, value string, strictMode bool) error {
 			return err
 		}
 		t.InputNames = value
+	case "inputnamespriority":
+		if value != "canonical" {
+			return fmt.Errorf("unsupported inputNamesPriority %q", value)
+		}
+		t.InputNamesPriority = value
+	case "inputnamescase":
+		if value != "fold" {
+			return fmt.Errorf("unsupported inputNamesCase %q", value)
+		}
+		t.InputNamesCase = value
+	case "inputnameskinds":
+		if _, err := parseInputKinds(value); err != nil {
+			return err
+		}
+		t.InputNamesKinds = value
+	case "inputnamesexclude":
+		if _, err := parseInputNames(value); err != nil {
+			return err
+		}
+		t.InputNamesExclude = value
 	case "dateformat", "isodateformat", "iso20220715":
 		t.DateFormat = value
 		t.TimeLayout = ftime.DateFormatToTimeLayout(value)
@@ -126,7 +150,7 @@ func (t *Tag) update(key string, value string, strictMode bool) error {
 }
 
 var tagKeys = map[string]bool{
-	"inputnames":       true,
+	"inputnames": true, "inputnamespriority": true, "inputnamescase": true, "inputnameskinds": true, "inputnamesexclude": true,
 	"timeinputlayouts": true, "timeepoch": true, "timeempty": true,
 	"-":             true,
 	"name":          true,
@@ -197,6 +221,9 @@ func Parse(tag reflect.StructTag, names ...string) (*Tag, error) {
 		}); err != nil {
 			return nil, err
 		}
+	}
+	if ret.HasInputNamePolicy() && ret.InputNames == "" {
+		return nil, fmt.Errorf("input name policies require inputNames")
 	}
 	return ret, nil
 }
