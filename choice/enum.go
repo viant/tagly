@@ -35,6 +35,7 @@ type Enum struct {
 	aliases            []enumAlias
 	fold               bool
 	upper              bool
+	trimSpace          bool
 	integerPassthrough bool
 	unknownString      *json.Number
 	unknownInteger     *json.Number
@@ -66,7 +67,7 @@ func defaultStyle(t reflect.Type) Style {
 	return Ordinal
 }
 func ParseEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
-	if !strings.Contains(string(tag), `choice:`) && !strings.Contains(string(tag), `enumStyle:`) && !strings.Contains(string(tag), `enumAccept:`) && !strings.Contains(string(tag), `enumAlias:`) && !strings.Contains(string(tag), `enumCase:`) && !strings.Contains(string(tag), `enumInteger:`) && !strings.Contains(string(tag), `enumUnknownString:`) && !strings.Contains(string(tag), `enumUnknownInteger:`) {
+	if !strings.Contains(string(tag), `choice:`) && !strings.Contains(string(tag), `enumStyle:`) && !strings.Contains(string(tag), `enumAccept:`) && !strings.Contains(string(tag), `enumAlias:`) && !strings.Contains(string(tag), `enumCase:`) && !strings.Contains(string(tag), `enumInteger:`) && !strings.Contains(string(tag), `enumUnknownString:`) && !strings.Contains(string(tag), `enumUnknownInteger:`) && !strings.Contains(string(tag), `enumTrim:`) {
 		return nil, nil
 	}
 	values, err := Tags(tag)
@@ -77,6 +78,7 @@ func ParseEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 	_, hasAccept := tag.Lookup("enumAccept")
 	_, hasAlias := tag.Lookup("enumAlias")
 	_, hasCase := tag.Lookup("enumCase")
+	_, hasTrim := tag.Lookup("enumTrim")
 	base := t
 	for base != nil && base.Kind() == reflect.Pointer {
 		base = base.Elem()
@@ -84,7 +86,7 @@ func ParseEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 	_, hasInteger := tag.Lookup("enumInteger")
 	_, hasUnknown := tag.Lookup("enumUnknownString")
 	_, hasUnknownInteger := tag.Lookup("enumUnknownInteger")
-	active := hasStyle || hasAccept || hasAlias || hasCase || hasInteger || hasUnknown || hasUnknownInteger
+	active := hasStyle || hasAccept || hasAlias || hasCase || hasTrim || hasInteger || hasUnknown || hasUnknownInteger
 	legacyNumeric := base != nil && base.Kind() != reflect.String
 	for _, value := range values {
 		if prefix, _, ok := strings.Cut(value, ":"); ok {

@@ -33,8 +33,9 @@ tokens and string alternatives. Describe the input using an integer enum
 branch OR one branch per string alternative, adding nullability at the owning boundary.
 Do not combine a case-sensitive string enum with the folded pattern. The pattern
 includes Unicode fold equivalents. Each string branch must emit `pattern` plus
-both `minLength` and `maxLength` equal to the alternative's `Length`, including
-zero. These lengths are Unicode rune counts. Exact length prevents JavaScript's
+`minLength` equal to the alternative's `Length`, including zero. When
+`VariableLength` is false, also emit `maxLength` equal to `Length`; when true,
+omit `maxLength`. These lengths are Unicode rune counts. Exact length prevents JavaScript's
 end anchor from accepting before an extra final newline, while avoiding
 lookahead syntax that Go's RE2-based schema validators reject. Supplementary-plane
 case-fold matching should be verified against the client's JavaScript regex mode.
@@ -53,6 +54,23 @@ JSON Schema integer validation is mathematical and cannot distinguish `1` from
 state; external code should obtain plans through `ParseEnum`, or use keyed
 construction for its exported fields. External unkeyed `Enum` literals require
 updating when adopting this version.
+
+## Optional whitespace trimming
+
+Scalar input can opt into `enumTrim:"space"` to apply Go's `strings.TrimSpace`
+before matching string names and aliases. Declared aliases are normalized by
+the same rule before collision checks. Canonical stored and output literals
+remain unchanged. Without the tag, whitespace remains significant.
+
+Trimming does not convert unknown quoted numbers to integer tokens or change
+integer, null, or fallback policies. Empty and unsupported `enumTrim` values,
+and use outside scalar input, fail plan construction.
+
+Trimmed string alternatives have `VariableLength` set and patterns that admit
+exactly the surrounding Unicode whitespace accepted by `strings.TrimSpace`.
+Schema consumers must omit their maximum length while retaining the minimum
+length. The pattern uses an explicit whitespace set rather than `\s`, whose
+meaning differs between regular-expression engines.
 
 ## Explicit open integer policies
 

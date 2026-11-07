@@ -34,25 +34,34 @@ type InputDomain struct {
 }
 
 // StringAlternative is one string branch of an input anyOf schema. Consumers
-// must emit both minLength and maxLength as Length, including zero. Exact rune
+// must emit both minLength and maxLength as Length, including zero, unless
+// VariableLength is true (Length is then only the minimum). Exact rune
 // length prevents JavaScript's $ from accepting before a final newline, without
 // lookahead syntax unsupported by Go's regexp-based schema validators.
 type StringAlternative struct {
-	Pattern string
-	Length  int
+	Pattern        string
+	Length         int
+	VariableLength bool
 }
 
 func (e *Enum) parseAliases(tag reflect.StructTag) error {
 	_, hasAlias := tag.Lookup("enumAlias")
 	_, hasCase := tag.Lookup("enumCase")
+	trimPolicy, hasTrim := tag.Lookup("enumTrim")
 	integerPolicy, hasInteger := tag.Lookup("enumInteger")
 	stringPolicy, hasUnknown := tag.Lookup("enumUnknownString")
 	unknownIntegerPolicy, hasUnknownInteger := tag.Lookup("enumUnknownInteger")
 	if e.Accept != Scalar {
-		if hasAlias || hasCase || hasInteger || hasUnknown || hasUnknownInteger {
+		if hasAlias || hasCase || hasTrim || hasInteger || hasUnknown || hasUnknownInteger {
 			return fmt.Errorf("enum input policies require enumAccept scalar")
 		}
 		return nil
+	}
+	if hasTrim {
+		if trimPolicy != "space" {
+			return fmt.Errorf("unsupported enumTrim %q", trimPolicy)
+		}
+		e.trimSpace = true
 	}
 	if hasInteger {
 		if e.Type.Kind() == reflect.String || e.Style != Ordinal {
@@ -185,6 +194,9 @@ func (e *Enum) equalInput(a, b string) bool {
 }
 
 func (e *Enum) addAlias(text string, index int) error {
+	if e.trimSpace {
+		text = strings.TrimSpace(text)
+	}
 	for _, old := range e.aliases {
 		if !e.equalInput(old.text, text) {
 			continue
@@ -224,6 +236,9 @@ func (e *Enum) decodeScalar(value any) ([]byte, error) {
 			}
 		}
 	case string:
+		if e.trimSpace {
+			actual = strings.TrimSpace(actual)
+		}
 		for _, alias := range e.aliases {
 			if e.equalInput(alias.text, actual) {
 				index = alias.entry
@@ -285,13 +300,23 @@ func (e *Enum) InputDomain() *InputDomain {
 	}
 	for _, alias := range e.aliases {
 		result.Strings = append(result.Strings, alias.text)
+		pattern := enumInputPattern(alias.text, e.fold, e.upper)
+		if e.trimSpace {
+			pattern = trimSpacePattern + "*(?:" + pattern + ")" + trimSpacePattern + "*"
+		}
 		result.StringAlternatives = append(result.StringAlternatives, StringAlternative{
-			Pattern: "^(?:" + enumInputPattern(alias.text, e.fold, e.upper) + ")$",
-			Length:  utf8.RuneCountInString(alias.text),
+			Pattern:        "^(?:" + pattern + ")$",
+			Length:         utf8.RuneCountInString(alias.text),
+			VariableLength: e.trimSpace,
 		})
 	}
 	return result
 }
+
+// Go strings.TrimSpace uses Unicode White_Space. Literal Unicode characters
+// keep this class valid in both Go and ECMAScript schema regexp engines.
+// U+180E and U+FEFF are intentionally absent; generic \\s is not equivalent.
+const trimSpacePattern = `[\x09-\x0D\x20` + "\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000" + `]`
 
 func enumInputPattern(text string, fold, upper bool) string {
 	if !fold && !upper {
