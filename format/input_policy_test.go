@@ -62,3 +62,37 @@ func TestInputNamePolicyDeclarationErrors(t *testing.T) {
 		t.Error("ambiguous fold aliases accepted")
 	}
 }
+
+func TestInputNameAliasPriority(t *testing.T) {
+	p, err := Parse(`format:"inputNames=CampaignFlightId|Ignored,inputNamesPriority=alias,inputNamesCase=fold,inputNamesKinds=number|null,inputNamesExclude=Ignored"`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := NewInputNameMatcher([]InputName{{Name: "flightId", Aliases: p.InputNames}}, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		members []InputMember
+		want    []bool
+	}{
+		{[]InputMember{{"CampaignFlightId", "number"}, {"flightId", "string"}}, []bool{true, false}},
+		{[]InputMember{{"FLIGHTID", "number"}, {"campaignflightid", "null"}}, []bool{false, true}},
+		{[]InputMember{{"flightId", "number"}, {"CampaignFlightId", "string"}}, []bool{true, false}},
+		{[]InputMember{{"Ignored", "number"}, {"flightId", "number"}}, []bool{false, true}},
+		{[]InputMember{{"CampaignFlightId", "number"}, {"flightId", "number"}, {"CAMPAIGNFLIGHTID", "number"}}, []bool{true, false, true}},
+		{[]InputMember{{"other", "number"}}, []bool{true}},
+	} {
+		if got := m.Select(tc.members); !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("%v got%v want%v", tc.members, got, tc.want)
+		}
+	}
+	same := &Tag{InputNames: "FLIGHTID", InputNamesPriority: "alias"}
+	m, err = NewInputNameMatcher([]InputName{{Name: "flightId", Aliases: same.InputNames}}, same)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := m.Select([]InputMember{{"FLIGHTID", "number"}, {"flightId", "number"}}); !reflect.DeepEqual(got, []bool{true, true}) {
+		t.Fatal(got)
+	}
+}

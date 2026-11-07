@@ -7,7 +7,7 @@ Four independent, opt-in options refine existing alias admission:
 
 | Option | Value | Effect |
 | --- | --- | --- |
-| `inputNamesPriority` | `canonical` | Ignore aliases when any canonical property is supplied. |
+| `inputNamesPriority` | `canonical` or `alias` | Prefer canonical occurrences, or admitted alias occurrences, independently of lexical order. |
 | `inputNamesKinds` | Pipe-separated JSON kinds | Ignore alias values of other kinds. |
 | `inputNamesCase` | `fold` | Match alias names with `strings.EqualFold`. |
 | `inputNamesExclude` | Pipe-separated exact names | Ignore these alias spellings, before case folding. |
@@ -46,3 +46,14 @@ advertising them. Schemas must accept ignored alias kinds, preserve meaningful
 constraints on admitted objects, and account for canonical precedence and
 requiredness. Output schemas remain canonical. Structology and Bindly own codec
 and presence behavior; schema exposure belongs to the HTTP/MCP schema owner.
+
+`inputNamesPriority=alias` selects admitted aliases over canonical occurrences.
+For example, `inputNames=CampaignFlightId,inputNamesPriority=alias,inputNamesCase=fold`
+keeps CI flight identifiers while output still uses the canonical JSON name.
+Alias null wins normally; invalid winning alias values remain errors. Excluded
+aliases and kinds rejected by `inputNamesKinds` do not suppress canonical input.
+Without an admitted alias, canonical input is decoded normally. Duplicates within
+the winning representation retain their existing order and strict-error policy.
+Schemas must also admit invalid canonical values discarded by alias priority;
+conservative projection must loosen that property as well as the alias and
+document runtime ownership of winning-value validation.

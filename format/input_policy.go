@@ -9,9 +9,9 @@ import (
 // Kind is a JSON kind: object, array, string, number, boolean, or null.
 type InputMember struct{ Name, Kind string }
 type inputNameRule struct {
-	aliases, exclude []string
-	kinds            map[string]bool
-	canonical, fold  bool
+	aliases, exclude       []string
+	kinds                  map[string]bool
+	canonical, alias, fold bool
 }
 
 func (t *Tag) HasInputNamePolicy() bool {
@@ -49,13 +49,14 @@ func (m *InputNameMatcher) compilePolicies(fields []InputName, policies []*Tag) 
 		if p.HasInputNamePolicy() && field.Aliases == "" {
 			return fmt.Errorf("input name policies require aliases for %s", field.Name)
 		}
-		if p.InputNamesPriority != "" && p.InputNamesPriority != "canonical" {
+		if p.InputNamesPriority != "" && p.InputNamesPriority != "canonical" && p.InputNamesPriority != "alias" {
 			return fmt.Errorf("unsupported input name priority")
 		}
 		if p.InputNamesCase != "" && p.InputNamesCase != "fold" {
 			return fmt.Errorf("unsupported input name case")
 		}
 		r.canonical = p.InputNamesPriority == "canonical"
+		r.alias = p.InputNamesPriority == "alias"
 		r.fold = p.InputNamesCase == "fold"
 		m.policies = m.policies || p.HasInputNamePolicy()
 		if p.InputNamesKinds != "" {
@@ -142,19 +143,30 @@ func (m *InputNameMatcher) Classify(name string) (int, bool, bool) {
 func (m *InputNameMatcher) Select(members []InputMember) []bool {
 	result := make([]bool, len(members))
 	canonical := make([]bool, len(m.names))
+	aliases := make([]bool, len(m.names))
 	for _, member := range members {
 		index, alias, excluded := m.Classify(member.Name)
 		if index >= 0 && !alias && !excluded {
 			canonical[index] = true
 		}
+		if index >= 0 && alias && !excluded {
+			r := m.rules[index]
+			if len(r.kinds) == 0 || r.kinds[member.Kind] {
+				aliases[index] = true
+			}
+		}
 	}
 	for i, member := range members {
 		index, alias, excluded := m.Classify(member.Name)
 		result[i] = !excluded
-		if excluded || index < 0 || !alias {
+		if excluded || index < 0 {
 			continue
 		}
 		r := m.rules[index]
+		if !alias {
+			result[i] = !r.alias || !aliases[index]
+			continue
+		}
 		result[i] = (!r.canonical || !canonical[index]) && (len(r.kinds) == 0 || r.kinds[member.Kind])
 	}
 	return result

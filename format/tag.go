@@ -73,7 +73,7 @@ func (t *Tag) update(key string, value string, strictMode bool) error {
 		}
 		t.InputNames = value
 	case "inputnamespriority":
-		if value != "canonical" {
+		if value != "canonical" && value != "alias" {
 			return fmt.Errorf("unsupported inputNamesPriority %q", value)
 		}
 		t.InputNamesPriority = value
