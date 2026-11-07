@@ -17,6 +17,9 @@ type Style string
 const (
 	Ordinal Style = "ordinal"
 	Literal Style = "literal"
+	// Scalar accepts declared integer ordinals and declared string inputs.
+	// It is an opt-in input representation, never an output style.
+	Scalar Style = "scalar"
 )
 
 type Entry struct {
@@ -29,6 +32,8 @@ type Enum struct {
 	Type          reflect.Type
 	Accept, Style Style
 	Entries       []Entry
+	aliases       []enumAlias
+	fold          bool
 }
 
 func enumStyle(raw string, fallback Style) (Style, error) {
@@ -57,7 +62,7 @@ func defaultStyle(t reflect.Type) Style {
 	return Ordinal
 }
 func ParseEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
-	if !strings.Contains(string(tag), `choice:`) && !strings.Contains(string(tag), `enumStyle:`) && !strings.Contains(string(tag), `enumAccept:`) {
+	if !strings.Contains(string(tag), `choice:`) && !strings.Contains(string(tag), `enumStyle:`) && !strings.Contains(string(tag), `enumAccept:`) && !strings.Contains(string(tag), `enumAlias:`) && !strings.Contains(string(tag), `enumCase:`) {
 		return nil, nil
 	}
 	values, err := Tags(tag)
@@ -66,11 +71,13 @@ func ParseEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 	}
 	_, hasStyle := tag.Lookup("enumStyle")
 	_, hasAccept := tag.Lookup("enumAccept")
+	_, hasAlias := tag.Lookup("enumAlias")
+	_, hasCase := tag.Lookup("enumCase")
 	base := t
 	for base != nil && base.Kind() == reflect.Pointer {
 		base = base.Elem()
 	}
-	active := hasStyle || hasAccept
+	active := hasStyle || hasAccept || hasAlias || hasCase
 	legacyNumeric := base != nil && base.Kind() != reflect.String
 	for _, value := range values {
 		if prefix, _, ok := strings.Cut(value, ":"); ok {
@@ -111,7 +118,11 @@ func ParseEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 		return nil, fmt.Errorf("enum representation requires choice declarations")
 	}
 	result := &Enum{Type: base}
-	result.Accept, err = enumStyle(tag.Get("enumAccept"), defaultStyle(base))
+	if tag.Get("enumAccept") == string(Scalar) {
+		result.Accept = Scalar
+	} else {
+		result.Accept, err = enumStyle(tag.Get("enumAccept"), defaultStyle(base))
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -144,6 +155,9 @@ func ParseEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 			}
 		}
 	}
+	if err := result.parseAliases(tag); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 func (e *Enum) storage(value any) (any, error) {
@@ -174,6 +188,11 @@ func (e *Enum) WireType(input bool) string {
 	if input {
 		style = e.Accept
 	}
+	if style == Scalar {
+		// A scalar union has no single JSON type. InputDomain describes its
+		// branches; callers must not advertise an integer-only contract.
+		return ""
+	}
 	if style == Literal {
 		return "string"
 	}
@@ -183,6 +202,10 @@ func (e *Enum) WireValues(input bool) []any {
 	style := e.Style
 	if input {
 		style = e.Accept
+	}
+	if style == Scalar {
+		// Folded string domains cannot be represented by a finite JSON enum.
+		return nil
 	}
 	result := make([]any, 0, len(e.Entries))
 	for _, entry := range e.Entries {
@@ -255,6 +278,9 @@ func (e *Enum) DecodeJSON(raw []byte) ([]byte, error) {
 	}
 	if value == nil {
 		return []byte("null"), nil
+	}
+	if e.Accept == Scalar {
+		return e.decodeScalar(value)
 	}
 	var stored any
 	if e.Accept == Literal {
