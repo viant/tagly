@@ -64,15 +64,8 @@ func (t *Tag) update(key string, value string, strictMode bool) error {
 	case "name":
 		t.Name = value
 	case "inputnames":
-		seen := make(map[string]bool)
-		for _, name := range strings.Split(value, "|") {
-			if name == "" {
-				return fmt.Errorf("inputNames contains an empty alias")
-			}
-			if seen[name] {
-				return fmt.Errorf("inputNames contains duplicate alias %q", name)
-			}
-			seen[name] = true
+		if _, err := parseInputNames(value); err != nil {
+			return err
 		}
 		t.InputNames = value
 	case "dateformat", "isodateformat", "iso20220715":
