@@ -26,7 +26,12 @@ type Tag struct {
 	DateFormat string `tag:"dataFormat,omitempty"`
 	TimeLayout string `tag:"timeLayout,omitempty"`
 	Timezone   string `tag:"timezone,omitempty"`
-	tz         *time.Location
+	// TimeInputLayouts is an ordered, pipe-separated set of strict input layouts.
+	// It is independent of TimeLayout, which controls output formatting.
+	TimeInputLayouts string `tag:"timeInputLayouts,omitempty"`
+	TimeEpoch        string `tag:"timeEpoch,omitempty"`
+	TimeEmpty        string `tag:"timeEmpty,omitempty"`
+	tz               *time.Location
 
 	FormatMask string `tag:"formatMask,omitempty"`
 	//Nullable flag to output null value as opposed zero/empty value
@@ -60,6 +65,23 @@ func (t *Tag) update(key string, value string, strictMode bool) error {
 		t.TimeLayout = ftime.DateFormatToTimeLayout(value)
 	case "timelayout", "datelayout", "rfc3339":
 		t.TimeLayout = value
+	case "timeinputlayouts":
+		for _, layout := range strings.Split(value, "|") {
+			if layout == "" {
+				return fmt.Errorf("timeInputLayouts contains an empty layout")
+			}
+		}
+		t.TimeInputLayouts = value
+	case "timeepoch":
+		if value != "milliseconds" {
+			return fmt.Errorf("unsupported timeEpoch: %s", value)
+		}
+		t.TimeEpoch = value
+	case "timeempty":
+		if value != "preserve" {
+			return fmt.Errorf("unsupported timeEmpty: %s", value)
+		}
+		t.TimeEmpty = value
 	case "tz", "timezone":
 		switch value {
 		case "UTC", "utc":
@@ -96,6 +118,7 @@ func (t *Tag) update(key string, value string, strictMode bool) error {
 }
 
 var tagKeys = map[string]bool{
+	"timeinputlayouts": true, "timeepoch": true, "timeempty": true,
 	"-":             true,
 	"name":          true,
 	"dateformat":    true,
