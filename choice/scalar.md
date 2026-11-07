@@ -74,3 +74,49 @@ bounds retain exact decimal tokens in `Minimum` and `Maximum`; consumers using
 floating-point schema bounds should emit only exactly representable bounds.
 Open ordinal output returns no finite `WireValues(false)` restriction. An absent
 finite enum means unrestricted storage values, never an enum containing only null.
+
+## Canonical string fallbacks
+
+String storage with literal output can independently map unknown strings or
+unknown integers to a declared choice:
+
+```go
+Mode *string `json:"mode" choice:"0:ASAP" choice:"1:SPEND_EVENLY" enumAccept:"scalar" enumStyle:"literal" enumCase:"fold" enumUnknownString:"0" enumUnknownInteger:"0"`
+```
+
+Known ordinals, names and explicit aliases take precedence. Each fallback tag
+names a declared ordinal whose canonical literal is stored and emitted. Here
+numeric `1` and case variants of `SPEND_EVENLY` become `SPEND_EVENLY`; other
+integers and strings become `ASAP`. Quoted `"1"` and `"Even"` are unknown strings
+unless explicitly authored as aliases. Case matching, aliases and null behavior
+remain independent. Without a fallback, unknown inputs retain strict rejection.
+
+`enumUnknownInteger` accepts exactly the signed native Go `int` range, even
+though storage is string. Known choice ordinals must also fit that range. Fractions,
+exponent spellings and overflow fail before fallback. For string storage the tag requires scalar
+input and literal output; it cannot combine with integer passthrough. String-storage `enumUnknownString` also requires literal output and
+a declared target. Existing integer-storage unknown-string policies are unchanged.
+
+`InputDomain` exposes open branches and exact decimal `Minimum`/`Maximum` bounds
+for the native-int input domain. Preserve these numbers exactly in serialized
+schemas: even binary-exact float64 bounds can serialize to a different decimal
+integer. Literal output still advertises only canonical choices. JSON Schema's
+mathematical integer type cannot express the decoder's integer-token spelling
+restriction (`1.0` and `1e0` remain runtime errors).
+
+
+Integer storage with ordinal output can use the same `enumUnknownInteger`
+policy to normalize unknown integers to a declared ordinal:
+
+```go
+Mode *int `json:"mode" choice:"1:FIXED_BUDGET" choice:"2:AUTO_BUDGET" enumAccept:"scalar" enumCase:"upper" enumUnknownString:"1" enumUnknownInteger:"1"`
+```
+
+Numeric `2` and the named `AUTO_BUDGET` value become `2`; other accepted integers
+and unknown strings become `1`. Input integers must fit the actual Go storage
+width before fallback; signedness and overflow checks are unchanged. Integer
+fallback and passthrough are mutually exclusive. Output choices remain finite
+when all fallbacks target declared choices. The pre-existing integer-storage
+unknown-string policy may still target an undeclared storage-valid integer;
+that combination retains unrestricted ordinal output metadata. Without the new
+integer fallback tag, all previous ordinal policy behavior remains unchanged.

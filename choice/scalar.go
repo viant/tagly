@@ -47,33 +47,64 @@ func (e *Enum) parseAliases(tag reflect.StructTag) error {
 	_, hasCase := tag.Lookup("enumCase")
 	integerPolicy, hasInteger := tag.Lookup("enumInteger")
 	stringPolicy, hasUnknown := tag.Lookup("enumUnknownString")
+	unknownIntegerPolicy, hasUnknownInteger := tag.Lookup("enumUnknownInteger")
 	if e.Accept != Scalar {
-		if hasAlias || hasCase || hasInteger || hasUnknown {
+		if hasAlias || hasCase || hasInteger || hasUnknown || hasUnknownInteger {
 			return fmt.Errorf("enum input policies require enumAccept scalar")
 		}
 		return nil
 	}
-	if hasInteger || hasUnknown {
+	if hasInteger {
 		if e.Type.Kind() == reflect.String || e.Style != Ordinal {
-			return fmt.Errorf("open scalar policies require integer storage and ordinal output")
+			return fmt.Errorf("integer passthrough requires integer storage and ordinal output")
 		}
+		if integerPolicy != "passthrough" {
+			return fmt.Errorf("unsupported enumInteger %q", integerPolicy)
+		}
+		e.integerPassthrough = true
+	}
+	if hasUnknownInteger {
 		if hasInteger {
-			if integerPolicy != "passthrough" {
-				return fmt.Errorf("unsupported enumInteger %q", integerPolicy)
-			}
-			e.integerPassthrough = true
+			return fmt.Errorf("enumUnknownInteger cannot combine with integer passthrough")
 		}
-		if hasUnknown {
-			number, err := ordinal(stringPolicy)
-			if err != nil {
+		if e.Style != defaultStyle(e.Type) {
+			return fmt.Errorf("enumUnknownInteger requires output matching the storage representation")
+		}
+		number, err := e.declaredFallback(unknownIntegerPolicy)
+		if err != nil {
+			return err
+		}
+		e.unknownInteger = &number
+		// Known and unknown numeric inputs share the same bounded domain.
+		for _, entry := range e.Entries {
+			if err := e.validateFallbackInteger(entry.Ordinal); err != nil {
 				return err
 			}
-			if _, err = e.storage(number); err != nil {
-				return err
-			}
-			e.unknownString = &number
 		}
 	}
+	if hasUnknown {
+		var number json.Number
+		var err error
+		if e.Type.Kind() == reflect.String {
+			if e.Style != Literal {
+				return fmt.Errorf("string fallback requires literal output")
+			}
+			number, err = e.declaredFallback(stringPolicy)
+		} else {
+			if e.Style != Ordinal {
+				return fmt.Errorf("integer string fallback requires ordinal output")
+			}
+			number, err = ordinal(stringPolicy)
+			if err == nil {
+				_, err = e.storage(number)
+			}
+		}
+		if err != nil {
+			return err
+		}
+		e.unknownString = &number
+	}
+
 	switch tag.Get("enumCase") {
 
 	case "":
@@ -122,6 +153,33 @@ func (e *Enum) parseAliases(tag reflect.StructTag) error {
 	return nil
 }
 
+// validateFallbackInteger checks input bounds before an unknown value is mapped.
+// Integer storage retains its actual width; string storage uses native int.
+func (e *Enum) validateFallbackInteger(code json.Number) error {
+	if e.Type.Kind() != reflect.String {
+		_, err := e.storage(code)
+		return err
+	}
+	if _, err := strconv.ParseInt(string(code), 10, strconv.IntSize); err != nil {
+		return fmt.Errorf("enum integer %s exceeds native int input range", code)
+	}
+	return nil
+}
+
+// declaredFallback resolves a canonical choice, never a new storage value.
+func (e *Enum) declaredFallback(raw string) (json.Number, error) {
+	number, err := ordinal(raw)
+	if err != nil {
+		return "", err
+	}
+	for _, entry := range e.Entries {
+		if entry.Ordinal == number {
+			return number, nil
+		}
+	}
+	return "", fmt.Errorf("enum fallback refers to undeclared ordinal %s", number)
+}
+
 func (e *Enum) equalInput(a, b string) bool {
 	return a == b || e.fold && strings.EqualFold(a, b) || e.upper && strings.ToUpper(a) == strings.ToUpper(b)
 }
@@ -148,6 +206,11 @@ func (e *Enum) decodeScalar(value any) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+		if e.unknownInteger != nil {
+			if err := e.validateFallbackInteger(code); err != nil {
+				return nil, err
+			}
+		}
 		if e.integerPassthrough {
 			if _, err := e.storage(code); err != nil {
 				return nil, err
@@ -170,9 +233,24 @@ func (e *Enum) decodeScalar(value any) ([]byte, error) {
 	default:
 		return nil, fmt.Errorf("scalar enum input requires a JSON integer or string")
 	}
-	if index < 0 && e.unknownString != nil {
-		if _, ok := value.(string); ok {
-			return json.Marshal(*e.unknownString)
+	if index < 0 {
+		var fallback *json.Number
+		switch value.(type) {
+		case string:
+			fallback = e.unknownString
+		case json.Number:
+			fallback = e.unknownInteger
+		}
+		if fallback != nil {
+			if e.Type.Kind() != reflect.String {
+				return json.Marshal(*fallback)
+			}
+			for i, entry := range e.Entries {
+				if entry.Ordinal == *fallback {
+					index = i
+					break
+				}
+			}
 		}
 	}
 	if index < 0 {
@@ -195,7 +273,7 @@ func (e *Enum) InputDomain() *InputDomain {
 	if e.Accept != Scalar {
 		return nil
 	}
-	result := &InputDomain{OpenIntegers: e.integerPassthrough, OpenStrings: e.unknownString != nil}
+	result := &InputDomain{OpenIntegers: e.integerPassthrough || e.unknownInteger != nil, OpenStrings: e.unknownString != nil}
 	if result.OpenIntegers {
 		result.Minimum, result.Maximum = e.integerBounds()
 	}
@@ -253,8 +331,12 @@ func enumInputPattern(text string, fold, upper bool) string {
 }
 
 func (e *Enum) integerBounds() (json.Number, json.Number) {
-	bits := e.Type.Bits()
-	if e.Type.Kind() >= reflect.Int && e.Type.Kind() <= reflect.Int64 {
+	typ := e.Type
+	if typ.Kind() == reflect.String {
+		typ = reflect.TypeOf(int(0))
+	}
+	bits := typ.Bits()
+	if typ.Kind() >= reflect.Int && typ.Kind() <= reflect.Int64 {
 		maximum := int64(^uint64(0) >> uint(65-bits))
 		minimum := -maximum - 1
 		return json.Number(strconv.FormatInt(minimum, 10)), json.Number(strconv.FormatInt(maximum, 10))

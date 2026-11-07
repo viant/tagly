@@ -37,6 +37,7 @@ type Enum struct {
 	upper              bool
 	integerPassthrough bool
 	unknownString      *json.Number
+	unknownInteger     *json.Number
 }
 
 func enumStyle(raw string, fallback Style) (Style, error) {
@@ -65,7 +66,7 @@ func defaultStyle(t reflect.Type) Style {
 	return Ordinal
 }
 func ParseEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
-	if !strings.Contains(string(tag), `choice:`) && !strings.Contains(string(tag), `enumStyle:`) && !strings.Contains(string(tag), `enumAccept:`) && !strings.Contains(string(tag), `enumAlias:`) && !strings.Contains(string(tag), `enumCase:`) && !strings.Contains(string(tag), `enumInteger:`) && !strings.Contains(string(tag), `enumUnknownString:`) {
+	if !strings.Contains(string(tag), `choice:`) && !strings.Contains(string(tag), `enumStyle:`) && !strings.Contains(string(tag), `enumAccept:`) && !strings.Contains(string(tag), `enumAlias:`) && !strings.Contains(string(tag), `enumCase:`) && !strings.Contains(string(tag), `enumInteger:`) && !strings.Contains(string(tag), `enumUnknownString:`) && !strings.Contains(string(tag), `enumUnknownInteger:`) {
 		return nil, nil
 	}
 	values, err := Tags(tag)
@@ -82,7 +83,8 @@ func ParseEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 	}
 	_, hasInteger := tag.Lookup("enumInteger")
 	_, hasUnknown := tag.Lookup("enumUnknownString")
-	active := hasStyle || hasAccept || hasAlias || hasCase || hasInteger || hasUnknown
+	_, hasUnknownInteger := tag.Lookup("enumUnknownInteger")
+	active := hasStyle || hasAccept || hasAlias || hasCase || hasInteger || hasUnknown || hasUnknownInteger
 	legacyNumeric := base != nil && base.Kind() != reflect.String
 	for _, value := range values {
 		if prefix, _, ok := strings.Cut(value, ":"); ok {
@@ -204,8 +206,20 @@ func (e *Enum) WireType(input bool) string {
 	return "integer"
 }
 func (e *Enum) WireValues(input bool) []any {
-	if !input && e.Style == Ordinal && (e.integerPassthrough || e.unknownString != nil) {
-		return nil
+	if !input && e.Style == Ordinal {
+		if e.integerPassthrough {
+			return nil
+		}
+		if e.unknownString != nil {
+			// Preserve existing open ordinal policies. An integer fallback can
+			// advertise finite output when every fallback is a declared choice.
+			if e.unknownInteger == nil {
+				return nil
+			}
+			if _, err := e.declaredFallback(string(*e.unknownString)); err != nil {
+				return nil
+			}
+		}
 	}
 	style := e.Style
 	if input {
