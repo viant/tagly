@@ -24,6 +24,8 @@ type enumAlias struct {
 // simple-fold equivalents when selected.
 // Ordinary enum modes continue to use WireType and WireValues.
 type InputDomain struct {
+	// Nullable is representation-level nullability, independent of pointers.
+	Nullable           bool
 	OpenIntegers       bool
 	OpenStrings        bool
 	Minimum            json.Number
@@ -201,7 +203,7 @@ func (e *Enum) addAlias(text string, index int) error {
 		if !e.equalInput(old.text, text) {
 			continue
 		}
-		if old.entry != index {
+		if old.entry != index && !(e.union != nil && e.Entries[old.entry].Literal == e.Entries[index].Literal) {
 			return fmt.Errorf("ambiguous enum input %q", text)
 		}
 		return nil
@@ -285,6 +287,9 @@ func (e *Enum) decodeScalar(value any) ([]byte, error) {
 // slices are independent of the compiled plan. Numeric token spelling (1 vs
 // 1.0) is a runtime lexical restriction that JSON Schema cannot express.
 func (e *Enum) InputDomain() *InputDomain {
+	if e.union != nil {
+		return e.scalarUnionDomain()
+	}
 	if e.Accept != Scalar {
 		return nil
 	}

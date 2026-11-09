@@ -39,6 +39,7 @@ type Enum struct {
 	integerPassthrough bool
 	unknownString      *json.Number
 	unknownInteger     *json.Number
+	union              *scalarUnionPolicy
 }
 
 func enumStyle(raw string, fallback Style) (Style, error) {
@@ -67,6 +68,17 @@ func defaultStyle(t reflect.Type) Style {
 	return Ordinal
 }
 func ParseEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
+	_, hasZero := tag.Lookup("enumZero")
+	_, hasEmpty := tag.Lookup("enumEmpty")
+	if hasZero || hasEmpty {
+		base := t
+		for base != nil && base.Kind() == reflect.Pointer {
+			base = base.Elem()
+		}
+		if base != reflect.TypeOf(ScalarValue{}) || tag.Get("enumAccept") != "scalar" || tag.Get("enumStyle") != "scalar" {
+			return nil, fmt.Errorf("enumZero and enumEmpty require ScalarValue with scalar input and output")
+		}
+	}
 	if !strings.Contains(string(tag), `choice:`) && !strings.Contains(string(tag), `enumStyle:`) && !strings.Contains(string(tag), `enumAccept:`) && !strings.Contains(string(tag), `enumAlias:`) && !strings.Contains(string(tag), `enumCase:`) && !strings.Contains(string(tag), `enumInteger:`) && !strings.Contains(string(tag), `enumUnknownString:`) && !strings.Contains(string(tag), `enumUnknownInteger:`) && !strings.Contains(string(tag), `enumTrim:`) {
 		return nil, nil
 	}
@@ -112,6 +124,9 @@ func ParseEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 	}
 	if base == nil {
 		return nil, fmt.Errorf("enum requires a storage type")
+	}
+	if base == reflect.TypeOf(ScalarValue{}) {
+		return parseScalarUnion(tag, base, values, t.Kind() == reflect.Pointer)
 	}
 	switch base.Kind() {
 	case reflect.String, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
@@ -178,6 +193,9 @@ func (e *Enum) storage(value any) (any, error) {
 	return convert(value, e.Type, true)
 }
 func (e *Enum) StorageValues() ([]any, error) {
+	if e.union != nil {
+		return nil, nil // Open, branch-preserving storage has no finite enum.
+	}
 	values := make([]any, 0, len(e.Entries))
 	for _, entry := range e.Entries {
 		var value any = entry.Ordinal
@@ -255,6 +273,13 @@ func (e *Enum) Encode(value any) (any, error) {
 	if !v.IsValid() {
 		return nil, nil
 	}
+	if e.union != nil {
+		stored, ok := v.Interface().(ScalarValue)
+		if !ok {
+			return nil, fmt.Errorf("scalar union requires ScalarValue, got %s", v.Type())
+		}
+		return e.encodeScalarUnion(stored)
+	}
 	if e.Type.Kind() == reflect.String {
 		literal := v.String()
 		if e.Style == Literal {
@@ -287,6 +312,9 @@ func (e *Enum) Encode(value any) (any, error) {
 // DecodeJSON returns JSON in the canonical storage representation. Null and
 // absence remain owned by the selected decoder, not by enumeration metadata.
 func (e *Enum) DecodeJSON(raw []byte) ([]byte, error) {
+	if e.union != nil {
+		return e.decodeScalarUnion(raw)
+	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.UseNumber()
 	var value any
