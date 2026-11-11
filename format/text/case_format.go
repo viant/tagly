@@ -225,6 +225,7 @@ func (c CaseFormat) nextWord(offset int, src string) (int, string) {
 	separatorEnd := 0
 	hasLetter := false
 	hasNumber := false
+	previousNumber := false
 	var wasUpper *bool
 	for i, r := range src[offset:] {
 		if unicode.IsNumber(r) || r == '.' {
@@ -235,15 +236,19 @@ func (c CaseFormat) nextWord(offset int, src string) (int, string) {
 				break
 			}
 			hasNumber = hasNumber || unicode.IsNumber(r)
+			previousNumber = unicode.IsNumber(r)
 			continue
 		}
 		if unicode.IsLetter(r) {
-			if wasSpecial || (hasNumber && !hasLetter) {
+			if wasSpecial || (hasNumber && !hasLetter) || (previousNumber && unicode.IsUpper(r)) {
 				// Keep a leading numeric token separate so the following word
 				// receives normal case conversion (for example, 14Day).
+				// An uppercase word after a numeric suffix also starts a new
+				// token: V2Id must be V2 + Id, not V2I + d.
 				ret = i
 				break
 			}
+			previousNumber = false
 			hasLetter = true
 			isUpper := unicode.IsUpper(r)
 			if i > 0 { //word boundry detection based on letter case changes
