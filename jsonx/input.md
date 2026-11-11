@@ -28,3 +28,19 @@ JSON Schema integer means mathematical integer; it cannot distinguish 1 from
 must remain explicitly tied to its native decoder, including aliases, required
 presence and output direction. Do not apply these input domains to generic
 encoding/json consumers, which do not perform the conversions.
+
+`objectToSlice` is an input-only policy for a direct slice of records (including
+named slices). Pointer-to-slice, pointer elements, fixed arrays, maps and scalar
+elements are rejected. The slice and record must not own JSON/Text marshaling or
+unmarshaling; ordinary nested fields retain their native decoding owners.
+A JSON object becomes one element, while arrays pass through byte-for-byte.
+Null remains null (or is omitted with explicit `null=omit`); `[]` stays empty.
+Scalar roots and malformed JSON fail. Element types, null elements, field
+visibility, aliases and presence remain the canonical typed decoder's concern.
+The policy preserves object member bytes, duplicate keys and number lexemes.
+
+Its input domain has Object, Array and Null branches. Consumers must project the
+same recursively generated element schema as the object alternative and array
+items; Object is not an unconstrained object. This policy does not change output
+serialization or automatically enable whole-body binding: a root consumer must
+explicitly carry the bound field policy into its native decoding pipeline once.

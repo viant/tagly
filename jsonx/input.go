@@ -14,12 +14,13 @@ import (
 
 // InputDomain describes additional admitted input representations. A true String
 // or Integer denotes an unrestricted branch, subject to any exact bounds.
-// Arrays retain the destination's item schema. Null is always decoder-owned.
+// Arrays retain the destination's item schema; Object uses that same record
+// schema for objectToSlice. Null is always decoder-owned.
 type InputDomain struct {
-	Boolean, String, Integer, Number, Array, Null bool
-	IntegerValues                                 []json.Number
-	StringValues                                  []string
-	Minimum, Maximum                              *json.Number
+	Boolean, String, Integer, Number, Array, Object, Null bool
+	IntegerValues                                         []json.Number
+	StringValues                                          []string
+	Minimum, Maximum                                      *json.Number
 }
 
 // Policy is immutable after compilation and safe for concurrent use.
@@ -37,7 +38,7 @@ func Compile(tag reflect.StructTag, typ reflect.Type) (*Policy, error) {
 		switch option {
 		case "null=omit":
 			p.omitNull = true
-		case "boolToInt", "intToBool", "numberToString", "commaStringToSlice", "boolIntToYN":
+		case "boolToInt", "intToBool", "numberToString", "commaStringToSlice", "boolIntToYN", "objectToSlice":
 			if p.conversion != "" && p.conversion != option {
 				return nil, fmt.Errorf("incompatible jsonx conversions %s and %s", p.conversion, option)
 			}
@@ -49,6 +50,25 @@ func Compile(tag reflect.StructTag, typ reflect.Type) (*Policy, error) {
 	}
 	if typ == nil {
 		return nil, fmt.Errorf("jsonx requires destination type")
+	}
+	if p.conversion == "objectToSlice" {
+		if typ.Kind() != reflect.Slice || typ.Elem().Kind() != reflect.Struct {
+			return nil, fmt.Errorf("jsonx objectToSlice requires a direct slice of records, got %v", typ)
+		}
+		// The policy admits a record shape; a custom JSON/Text owner could
+		// instead represent either the collection or element as a scalar.
+		for _, candidate := range []reflect.Type{typ, typ.Elem()} {
+			for _, owner := range []reflect.Type{
+				reflect.TypeOf((*json.Unmarshaler)(nil)).Elem(),
+				reflect.TypeOf((*json.Marshaler)(nil)).Elem(),
+				reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem(),
+				reflect.TypeOf((*encoding.TextMarshaler)(nil)).Elem(),
+			} {
+				if candidate.Implements(owner) || reflect.PointerTo(candidate).Implements(owner) {
+					return nil, fmt.Errorf("jsonx objectToSlice cannot override custom JSON/Text ownership on %v", candidate)
+				}
+			}
+		}
 	}
 	jsonOwner := reflect.TypeOf((*json.Unmarshaler)(nil)).Elem()
 	textOwner := reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
@@ -96,6 +116,23 @@ func (p *Policy) Apply(raw []byte) ([]byte, bool, error) {
 		return nil, false, fmt.Errorf("invalid JSON input for jsonx %s", p.conversion)
 	}
 	switch p.conversion {
+	case "objectToSlice":
+		if len(token) == 0 || !json.Valid(token) {
+			return fail()
+		}
+		switch token[0] {
+		case '[':
+			// Element decoding, visibility and presence remain native decoder
+			// responsibilities, including ordinary null record elements.
+			return raw, false, nil
+		case '{':
+			result := make([]byte, 0, len(raw)+2)
+			result = append(result, '[')
+			result = append(result, raw...)
+			return append(result, ']'), false, nil
+		default:
+			return fail()
+		}
 	case "boolToInt":
 		if bytes.Equal(token, []byte("true")) {
 			return []byte("1"), false, nil
@@ -192,6 +229,9 @@ func (p *Policy) InputDomain() InputDomain {
 		return d
 	}
 	switch p.conversion {
+	case "objectToSlice":
+		d.Object = true
+		d.Array = true
 	case "boolToInt":
 		d.Boolean = true
 		d.Integer = true
