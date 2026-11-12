@@ -127,6 +127,9 @@ func (e *Enum) decodeScalarUnion(raw []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if e.rejectNull && value.String == nil && value.Integer == nil {
+		return nil, ErrNullInput
+	}
 	value, err = e.normalizeScalarUnion(value)
 	if err != nil {
 		return nil, err

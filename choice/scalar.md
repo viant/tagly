@@ -138,3 +138,25 @@ when all fallbacks target declared choices. The pre-existing integer-storage
 unknown-string policy may still target an undeclared storage-valid integer;
 that combination retains unrestricted ordinal output metadata. Without the new
 integer fallback tag, all previous ordinal policy behavior remains unchanged.
+
+## Explicit null admission
+
+`enumNull:"reject"` opts an enum field into rejecting an explicit JSON `null`
+before conversion to its storage value. It applies to literal, ordinal, scalar
+and `ScalarValue` enum plans. The only accepted declaration value is `reject`;
+omitting the tag retains existing null pass-through behavior.
+
+```go
+PacingMode int `choice:"0:ASAP" choice:"1:SPEND_EVENLY" enumAccept:"literal" enumStyle:"literal" enumNull:"reject"`
+```
+
+This does not make the field required, reject the valid ASAP zero, or change
+output encoding. The containing decoder still owns omission/presence. Explicit
+`enumZero:"null"` and `enumEmpty:"null"` normalization rules remain independent:
+valid zero/empty tokens can still normalize to null; only the JSON null token is
+rejected. Errors retain `choice.ErrNullInput` for `errors.Is` through wrapping.
+
+Schema consumers use `AllowsNullInput()` when advertising pointer input
+alternatives. Scalar-union `InputDomain().Nullable` also reflects the rule;
+`OutputDomain()` remains unchanged. The rule is compiled once with the existing
+enum metadata and checked in the existing decoder, without an extra parse/pass.

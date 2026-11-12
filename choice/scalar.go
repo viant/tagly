@@ -288,7 +288,9 @@ func (e *Enum) decodeScalar(value any) ([]byte, error) {
 // 1.0) is a runtime lexical restriction that JSON Schema cannot express.
 func (e *Enum) InputDomain() *InputDomain {
 	if e.union != nil {
-		return e.scalarUnionDomain()
+		result := e.scalarUnionDomain()
+		result.Nullable = result.Nullable && e.AllowsNullInput()
+		return result
 	}
 	if e.Accept != Scalar {
 		return nil

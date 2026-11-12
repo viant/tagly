@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"reflect"
@@ -11,6 +12,9 @@ import (
 	"strings"
 	"sync"
 )
+
+// ErrNullInput identifies an explicitly rejected JSON null enum input.
+var ErrNullInput = errors.New("enum input cannot be null")
 
 type Style string
 
@@ -36,6 +40,7 @@ type Enum struct {
 	fold               bool
 	upper              bool
 	trimSpace          bool
+	rejectNull         bool
 	integerPassthrough bool
 	unknownString      *json.Number
 	unknownInteger     *json.Number
@@ -68,6 +73,10 @@ func defaultStyle(t reflect.Type) Style {
 	return Ordinal
 }
 func ParseEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
+	nullPolicy, hasNull := tag.Lookup("enumNull")
+	if hasNull && nullPolicy != "reject" {
+		return nil, fmt.Errorf("enumNull must be reject, got %q", nullPolicy)
+	}
 	_, hasZero := tag.Lookup("enumZero")
 	_, hasEmpty := tag.Lookup("enumEmpty")
 	if hasZero || hasEmpty {
@@ -79,7 +88,7 @@ func ParseEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 			return nil, fmt.Errorf("enumZero and enumEmpty require ScalarValue with scalar input and output")
 		}
 	}
-	if !strings.Contains(string(tag), `choice:`) && !strings.Contains(string(tag), `enumStyle:`) && !strings.Contains(string(tag), `enumAccept:`) && !strings.Contains(string(tag), `enumAlias:`) && !strings.Contains(string(tag), `enumCase:`) && !strings.Contains(string(tag), `enumInteger:`) && !strings.Contains(string(tag), `enumUnknownString:`) && !strings.Contains(string(tag), `enumUnknownInteger:`) && !strings.Contains(string(tag), `enumTrim:`) {
+	if !strings.Contains(string(tag), `choice:`) && !strings.Contains(string(tag), `enumStyle:`) && !strings.Contains(string(tag), `enumAccept:`) && !strings.Contains(string(tag), `enumAlias:`) && !strings.Contains(string(tag), `enumCase:`) && !strings.Contains(string(tag), `enumInteger:`) && !strings.Contains(string(tag), `enumUnknownString:`) && !strings.Contains(string(tag), `enumUnknownInteger:`) && !strings.Contains(string(tag), `enumTrim:`) && !hasNull {
 		return nil, nil
 	}
 	values, err := Tags(tag)
@@ -98,7 +107,7 @@ func ParseEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 	_, hasInteger := tag.Lookup("enumInteger")
 	_, hasUnknown := tag.Lookup("enumUnknownString")
 	_, hasUnknownInteger := tag.Lookup("enumUnknownInteger")
-	active := hasStyle || hasAccept || hasAlias || hasCase || hasTrim || hasInteger || hasUnknown || hasUnknownInteger
+	active := hasStyle || hasAccept || hasAlias || hasCase || hasTrim || hasInteger || hasUnknown || hasUnknownInteger || hasNull
 	legacyNumeric := base != nil && base.Kind() != reflect.String
 	for _, value := range values {
 		if prefix, _, ok := strings.Cut(value, ":"); ok {
@@ -126,7 +135,11 @@ func ParseEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 		return nil, fmt.Errorf("enum requires a storage type")
 	}
 	if base == reflect.TypeOf(ScalarValue{}) {
-		return parseScalarUnion(tag, base, values, t.Kind() == reflect.Pointer)
+		result, err := parseScalarUnion(tag, base, values, t.Kind() == reflect.Pointer)
+		if result != nil {
+			result.rejectNull = hasNull
+		}
+		return result, err
 	}
 	switch base.Kind() {
 	case reflect.String, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
@@ -141,7 +154,7 @@ func ParseEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 	if len(values) == 0 {
 		return nil, fmt.Errorf("enum representation requires choice declarations")
 	}
-	result := &Enum{Type: base}
+	result := &Enum{Type: base, rejectNull: hasNull}
 	if tag.Get("enumAccept") == string(Scalar) {
 		result.Accept = Scalar
 	} else {
@@ -309,8 +322,12 @@ func (e *Enum) Encode(value any) (any, error) {
 	return nil, fmt.Errorf("unknown enum ordinal %s", text)
 }
 
-// DecodeJSON returns JSON in the canonical storage representation. Null and
-// absence remain owned by the selected decoder, not by enumeration metadata.
+// AllowsNullInput reports whether enum conversion passes an explicit JSON null
+// through to the storage decoder. Omission remains owned by the containing field.
+func (e *Enum) AllowsNullInput() bool { return e == nil || !e.rejectNull }
+
+// DecodeJSON returns JSON in the canonical storage representation. Null normally
+// remains owned by the selected decoder; enumNull:"reject" rejects it explicitly.
 func (e *Enum) DecodeJSON(raw []byte) ([]byte, error) {
 	if e.union != nil {
 		return e.decodeScalarUnion(raw)
@@ -329,6 +346,9 @@ func (e *Enum) DecodeJSON(raw []byte) ([]byte, error) {
 		return nil, fmt.Errorf("unexpected trailing enum JSON value")
 	}
 	if value == nil {
+		if e.rejectNull {
+			return nil, ErrNullInput
+		}
 		return []byte("null"), nil
 	}
 	if e.Accept == Scalar {
