@@ -16,6 +16,9 @@ import (
 // ErrNullInput identifies an explicitly rejected JSON null enum input.
 var ErrNullInput = errors.New("enum input cannot be null")
 
+// ErrUnknownOutput identifies a stored string rejected by enumOutputUnknown.
+var ErrUnknownOutput = errors.New("unknown enum output")
+
 type Style string
 
 const (
@@ -33,18 +36,20 @@ type Entry struct {
 
 // Enum keeps storage independent from input/output JSON representations.
 type Enum struct {
-	Type               reflect.Type
-	Accept, Style      Style
-	Entries            []Entry
-	aliases            []enumAlias
-	fold               bool
-	upper              bool
-	trimSpace          bool
-	rejectNull         bool
-	integerPassthrough bool
-	unknownString      *json.Number
-	unknownInteger     *json.Number
-	union              *scalarUnionPolicy
+	Type                reflect.Type
+	Accept, Style       Style
+	Entries             []Entry
+	aliases             []enumAlias
+	fold                bool
+	upper               bool
+	trimSpace           bool
+	rejectNull          bool
+	integerPassthrough  bool
+	unknownString       *json.Number
+	unknownInteger      *json.Number
+	union               *scalarUnionPolicy
+	outputLiterals      map[string]string
+	rejectOutputUnknown bool
 }
 
 func enumStyle(raw string, fallback Style) (Style, error) {
@@ -73,6 +78,8 @@ func defaultStyle(t reflect.Type) Style {
 	return Ordinal
 }
 func ParseEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
+	hasOutputAlias := strings.Contains(string(tag), `enumOutputAlias:`)
+	hasOutputUnknown := strings.Contains(string(tag), `enumOutputUnknown:`)
 	nullPolicy, hasNull := tag.Lookup("enumNull")
 	if hasNull && nullPolicy != "reject" {
 		return nil, fmt.Errorf("enumNull must be reject, got %q", nullPolicy)
@@ -88,7 +95,7 @@ func ParseEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 			return nil, fmt.Errorf("enumZero and enumEmpty require ScalarValue with scalar input and output")
 		}
 	}
-	if !strings.Contains(string(tag), `choice:`) && !strings.Contains(string(tag), `enumStyle:`) && !strings.Contains(string(tag), `enumAccept:`) && !strings.Contains(string(tag), `enumAlias:`) && !strings.Contains(string(tag), `enumCase:`) && !strings.Contains(string(tag), `enumInteger:`) && !strings.Contains(string(tag), `enumUnknownString:`) && !strings.Contains(string(tag), `enumUnknownInteger:`) && !strings.Contains(string(tag), `enumTrim:`) && !hasNull {
+	if !strings.Contains(string(tag), `choice:`) && !strings.Contains(string(tag), `enumStyle:`) && !strings.Contains(string(tag), `enumAccept:`) && !strings.Contains(string(tag), `enumAlias:`) && !strings.Contains(string(tag), `enumCase:`) && !strings.Contains(string(tag), `enumInteger:`) && !strings.Contains(string(tag), `enumUnknownString:`) && !strings.Contains(string(tag), `enumUnknownInteger:`) && !strings.Contains(string(tag), `enumTrim:`) && !hasNull && !hasOutputAlias && !hasOutputUnknown {
 		return nil, nil
 	}
 	values, err := Tags(tag)
@@ -107,7 +114,7 @@ func ParseEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 	_, hasInteger := tag.Lookup("enumInteger")
 	_, hasUnknown := tag.Lookup("enumUnknownString")
 	_, hasUnknownInteger := tag.Lookup("enumUnknownInteger")
-	active := hasStyle || hasAccept || hasAlias || hasCase || hasTrim || hasInteger || hasUnknown || hasUnknownInteger || hasNull
+	active := hasStyle || hasAccept || hasAlias || hasCase || hasTrim || hasInteger || hasUnknown || hasUnknownInteger || hasNull || hasOutputAlias || hasOutputUnknown
 	legacyNumeric := base != nil && base.Kind() != reflect.String
 	for _, value := range values {
 		if prefix, _, ok := strings.Cut(value, ":"); ok {
@@ -135,6 +142,9 @@ func ParseEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 		return nil, fmt.Errorf("enum requires a storage type")
 	}
 	if base == reflect.TypeOf(ScalarValue{}) {
+		if hasOutputAlias || hasOutputUnknown {
+			return nil, fmt.Errorf("enum output policies require string storage and literal output")
+		}
 		result, err := parseScalarUnion(tag, base, values, t.Kind() == reflect.Pointer)
 		if result != nil {
 			result.rejectNull = hasNull
@@ -195,6 +205,9 @@ func ParseEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 	if err := result.parseAliases(tag); err != nil {
 		return nil, err
 	}
+	if err := result.parseOutputAliases(tag); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 func (e *Enum) storage(value any) (any, error) {
@@ -239,6 +252,11 @@ func (e *Enum) WireType(input bool) string {
 	return "integer"
 }
 func (e *Enum) WireValues(input bool) []any {
+	if !input && e.outputLiterals != nil && !e.rejectOutputUnknown {
+		// Output aliases normalize known stored tokens; unknown strings remain
+		// valid outputs unless explicitly rejected. A finite enum would lie.
+		return nil
+	}
 	if !input && e.Style == Ordinal {
 		if e.integerPassthrough {
 			return nil
@@ -296,6 +314,14 @@ func (e *Enum) Encode(value any) (any, error) {
 	if e.Type.Kind() == reflect.String {
 		literal := v.String()
 		if e.Style == Literal {
+			if e.outputLiterals != nil {
+				if canonical, ok := e.outputLiterals[literal]; ok {
+					return canonical, nil
+				}
+				if e.rejectOutputUnknown {
+					return nil, fmt.Errorf("%w: %q", ErrUnknownOutput, literal)
+				}
+			}
 			return literal, nil
 		}
 		for _, entry := range e.Entries {
