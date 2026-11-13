@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
-	"strings"
 	"testing"
 )
 
@@ -80,7 +79,7 @@ func TestMCPCollectionGateAndScalarCompatibility(t *testing.T) {
 	if e, err := ParseEnum(tag, reflect.TypeOf("")); err != nil || e == nil {
 		t.Fatal(e, err)
 	}
-	if _, err := Parse(`mcpEnum:"true" choice:"DISPLAY" enumAccept:"literal"`, reflect.TypeOf([]string{})); err == nil || !strings.Contains(err.Error(), "storage") {
+	if constraint, err := Parse(`mcpEnum:"true" choice:"DISPLAY" enumAccept:"literal"`, reflect.TypeOf([]string{})); err != nil || constraint != nil {
 		t.Fatal(err)
 	}
 }

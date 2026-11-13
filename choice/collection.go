@@ -8,6 +8,7 @@ import (
 	"reflect"
 
 	"github.com/viant/tagly/format"
+	"github.com/viant/tagly/tags"
 )
 
 // ParseCollectionEnum compiles literal choices for an MCP string collection.
@@ -24,7 +25,21 @@ func ParseCollectionEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 	if base == nil || base.Kind() != reflect.Slice || base.Elem().Kind() != reflect.String {
 		return nil, nil
 	}
-	if _, err := ParseEnum(tag, t); err != nil {
+	scalarTag := tag
+	if tag.Get("enumAccept") == "literal" {
+		parsed, err := tags.Parse(string(tag))
+		if err != nil {
+			return nil, err
+		}
+		retained := parsed[:0]
+		for _, item := range parsed {
+			if item.Name != "enumAccept" {
+				retained = append(retained, item)
+			}
+		}
+		scalarTag = reflect.StructTag(retained.Literal())
+	}
+	if _, err := parseScalarEnum(scalarTag, t); err != nil {
 		return nil, err
 	}
 	values, err := Tags(tag)

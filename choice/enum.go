@@ -79,7 +79,21 @@ func defaultStyle(t reflect.Type) Style {
 	}
 	return Ordinal
 }
+
+// ParseEnum compiles explicit enum conversion. Collection admission is activated
+// by literal input metadata, separately from MCP-only discovery choices.
 func ParseEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
+	base := t
+	for base != nil && base.Kind() == reflect.Pointer {
+		base = base.Elem()
+	}
+	if tag.Get("mcpEnum") == "true" && tag.Get("enumAccept") == "literal" && base != nil && base.Kind() == reflect.Slice && base.Elem().Kind() == reflect.String {
+		return ParseCollectionEnum(tag, t)
+	}
+	return parseScalarEnum(tag, t)
+}
+
+func parseScalarEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 	hasOutputAlias := strings.Contains(string(tag), `enumOutputAlias:`)
 	hasOutputUnknown := strings.Contains(string(tag), `enumOutputUnknown:`)
 	nullPolicy, hasNull := tag.Lookup("enumNull")

@@ -112,6 +112,9 @@ func Parse(tag reflect.StructTag, t reflect.Type) (*Constraint, error) {
 	if enumeration, err := ParseEnum(tag, t); err != nil {
 		return nil, err
 	} else if enumeration != nil {
+		if enumeration.CollectionItems() != nil {
+			return nil, nil // Membership remains owned by the collection codec.
+		}
 		values, err := enumeration.StorageValues()
 		if err != nil {
 			return nil, err
