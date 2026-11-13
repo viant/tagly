@@ -19,9 +19,6 @@ func parseScalarUnion(tag reflect.StructTag, typ reflect.Type, choices []string,
 	if tag.Get("enumAccept") != "scalar" || tag.Get("enumStyle") != "scalar" {
 		return nil, fmt.Errorf("ScalarValue requires scalar input and output styles")
 	}
-	if len(choices) == 0 {
-		return nil, fmt.Errorf("scalar union requires choices")
-	}
 	p := &scalarUnionPolicy{pointer: pointer}
 	e := &Enum{Type: typ, Accept: Scalar, Style: Scalar, union: p}
 	seen := map[int64]bool{}
@@ -75,6 +72,9 @@ func parseScalarUnion(tag reflect.StructTag, typ reflect.Type, choices []string,
 		case "enumUnknownInteger":
 			return nil, fmt.Errorf("scalar union cannot apply integer fallback")
 		}
+	}
+	if len(choices) == 0 && !p.integers && !p.strings {
+		return nil, fmt.Errorf("scalar union requires choices or an explicit passthrough policy")
 	}
 	if err := e.parseAliases(reflect.StructTag(aliasTags.String())); err != nil {
 		return nil, err

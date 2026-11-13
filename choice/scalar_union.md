@@ -29,6 +29,17 @@ ordinals and aliases addressing different canonical literals fail compilation.
 Multiple ordinals sharing exactly the same literal are permitted. Catalog and
 domain/persistence decisions remain in application code.
 
+Choices may be omitted when an existing open policy explicitly permits a branch:
+
+```go
+ID choice.ScalarValue `json:"id" enumAccept:"scalar" enumStyle:"scalar" enumInteger:"passthrough" enumUnknownString:"preserve"`
+```
+
+This preserves integer and string inputs without inventing an enum value. The
+two policies remain independent; omit one to reject that unknown branch. Null,
+zero, empty-string and trim policies retain their existing behavior. No choices
+and no open policy remains an invalid declaration.
+
 Schema consumers must handle `InputDomain()` and `OutputDomain()`, including
 `Nullable` and integer bounds, before using `WireType`/`WireValues`. A union has
 no single `WireType`. `StorageValues` is not a finite validation domain for this
