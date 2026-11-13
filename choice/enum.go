@@ -36,6 +36,8 @@ type Entry struct {
 
 // Enum keeps storage independent from input/output JSON representations.
 type Enum struct {
+	collection          *Constraint
+	collectionMembers   map[string]bool
 	Type                reflect.Type
 	Accept, Style       Style
 	Entries             []Entry
@@ -237,6 +239,9 @@ func (e *Enum) StorageValues() ([]any, error) {
 	return values, nil
 }
 func (e *Enum) WireType(input bool) string {
+	if e.collection != nil {
+		return "array"
+	}
 	style := e.Style
 	if input {
 		style = e.Accept
@@ -252,6 +257,9 @@ func (e *Enum) WireType(input bool) string {
 	return "integer"
 }
 func (e *Enum) WireValues(input bool) []any {
+	if e.collection != nil {
+		return nil // A collection has an item domain, not a finite array domain.
+	}
 	if !input && e.outputLiterals != nil && !e.rejectOutputUnknown {
 		// Output aliases normalize known stored tokens; unknown strings remain
 		// valid outputs unless explicitly rejected. A finite enum would lie.
@@ -294,6 +302,16 @@ func (e *Enum) WireValues(input bool) []any {
 	return result
 }
 func (e *Enum) Encode(value any) (any, error) {
+	if e.collection != nil {
+		raw, err := json.Marshal(value)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := e.decodeCollection(raw); err != nil {
+			return nil, err
+		}
+		return value, nil
+	}
 	v := reflect.ValueOf(value)
 	for v.IsValid() && v.Kind() == reflect.Pointer {
 		if v.IsNil() {
@@ -355,6 +373,9 @@ func (e *Enum) AllowsNullInput() bool { return e == nil || !e.rejectNull }
 // DecodeJSON returns JSON in the canonical storage representation. Null normally
 // remains owned by the selected decoder; enumNull:"reject" rejects it explicitly.
 func (e *Enum) DecodeJSON(raw []byte) ([]byte, error) {
+	if e.collection != nil {
+		return e.decodeCollection(raw)
+	}
 	if e.union != nil {
 		return e.decodeScalarUnion(raw)
 	}

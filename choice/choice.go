@@ -118,6 +118,11 @@ func Parse(tag reflect.StructTag, t reflect.Type) (*Constraint, error) {
 		}
 		return Normalize(enumeration.Type, values)
 	}
+	// Collection choices have an explicit transport owner. Do not install a
+	// scalar constraint (or implicit REST membership validation) for that owner.
+	if collection, err := ParseCollectionEnum(tag, t); err != nil || collection != nil {
+		return nil, err
+	}
 
 	// Metadata without choice remains unaffected, even if another tag owner uses
 	// a nonstandard spelling. Choice presence invokes the strict tag parser.
