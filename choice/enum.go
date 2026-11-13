@@ -16,7 +16,7 @@ import (
 // ErrNullInput identifies an explicitly rejected JSON null enum input.
 var ErrNullInput = errors.New("enum input cannot be null")
 
-// ErrUnknownOutput identifies a stored string rejected by enumOutputUnknown.
+// ErrUnknownOutput identifies a stored value outside a strict enum output domain.
 var ErrUnknownOutput = errors.New("unknown enum output")
 
 type Style string
@@ -24,6 +24,8 @@ type Style string
 const (
 	Ordinal Style = "ordinal"
 	Literal Style = "literal"
+	// Boolean maps the explicitly declared integer domain 0/1 to false/true.
+	Boolean Style = "boolean"
 	// Scalar accepts declared integer ordinals and declared string inputs.
 	// It is an opt-in input representation, never an output style.
 	Scalar Style = "scalar"
@@ -59,10 +61,10 @@ func enumStyle(raw string, fallback Style) (Style, error) {
 		return fallback, nil
 	}
 	switch Style(raw) {
-	case Ordinal, Literal:
+	case Ordinal, Literal, Boolean:
 		return Style(raw), nil
 	}
-	return "", fmt.Errorf("enum representation must be ordinal or literal, got %q", raw)
+	return "", fmt.Errorf("enum representation must be ordinal, literal or boolean, got %q", raw)
 }
 func ordinal(text string) (json.Number, error) {
 	if value, err := strconv.ParseInt(text, 10, 64); err == nil {
@@ -218,6 +220,16 @@ func parseScalarEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 			}
 		}
 	}
+	if result.Accept == Boolean || result.Style == Boolean {
+		if base.Kind() == reflect.String || len(values) != 2 || !seenOrd["0"] || !seenOrd["1"] {
+			return nil, fmt.Errorf("boolean enum requires integer storage and explicit choices 0:false and 1:true")
+		}
+		for _, value := range values {
+			if value != "0:false" && value != "1:true" {
+				return nil, fmt.Errorf("boolean enum requires explicit choices 0:false and 1:true")
+			}
+		}
+	}
 	if err := result.parseAliases(tag); err != nil {
 		return nil, err
 	}
@@ -265,6 +277,9 @@ func (e *Enum) WireType(input bool) string {
 		// branches; callers must not advertise an integer-only contract.
 		return ""
 	}
+	if style == Boolean {
+		return "boolean"
+	}
 	if style == Literal {
 		return "string"
 	}
@@ -304,7 +319,9 @@ func (e *Enum) WireValues(input bool) []any {
 	}
 	result := make([]any, 0, len(e.Entries))
 	for _, entry := range e.Entries {
-		if style == Literal {
+		if style == Boolean {
+			result = append(result, entry.Ordinal == "1")
+		} else if style == Literal {
 			result = append(result, entry.Literal)
 		} else if n, err := strconv.ParseInt(string(entry.Ordinal), 10, 64); err == nil {
 			result = append(result, n)
@@ -363,6 +380,24 @@ func (e *Enum) Encode(value any) (any, error) {
 		}
 		return nil, fmt.Errorf("unknown enum literal %q", literal)
 	}
+	if e.Style == Boolean {
+		if v.Kind() >= reflect.Int && v.Kind() <= reflect.Int64 {
+			switch v.Int() {
+			case 0:
+				return false, nil
+			case 1:
+				return true, nil
+			}
+		} else if v.Kind() >= reflect.Uint && v.Kind() <= reflect.Uint64 {
+			switch v.Uint() {
+			case 0:
+				return false, nil
+			case 1:
+				return true, nil
+			}
+		}
+		return nil, fmt.Errorf("%w: boolean enum requires stored integer 0 or 1, got %v", ErrUnknownOutput, value)
+	}
 	var text string
 	if v.Kind() >= reflect.Int && v.Kind() <= reflect.Int64 {
 		text = strconv.FormatInt(v.Int(), 10)
@@ -416,7 +451,16 @@ func (e *Enum) DecodeJSON(raw []byte) ([]byte, error) {
 		return e.decodeScalar(value)
 	}
 	var stored any
-	if e.Accept == Literal {
+	if e.Accept == Boolean {
+		boolean, ok := value.(bool)
+		if !ok {
+			return nil, fmt.Errorf("enum input requires a JSON boolean")
+		}
+		stored = json.Number("0")
+		if boolean {
+			stored = json.Number("1")
+		}
+	} else if e.Accept == Literal {
 		literal, ok := value.(string)
 		if !ok {
 			return nil, fmt.Errorf("enum input requires a JSON string")
