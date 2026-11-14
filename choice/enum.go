@@ -39,6 +39,7 @@ type Entry struct {
 // Enum keeps storage independent from input/output JSON representations.
 type Enum struct {
 	collection          *Constraint
+	collectionElement   *Enum
 	collectionMembers   map[string]bool
 	Type                reflect.Type
 	Accept, Style       Style
@@ -89,8 +90,11 @@ func ParseEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 	for base != nil && base.Kind() == reflect.Pointer {
 		base = base.Elem()
 	}
-	if tag.Get("mcpEnum") == "true" && tag.Get("enumAccept") == "literal" && base != nil && base.Kind() == reflect.Slice && base.Elem().Kind() == reflect.String {
-		return ParseCollectionEnum(tag, t)
+	if tag.Get("mcpEnum") == "true" && base != nil && base.Kind() == reflect.Slice &&
+		(base.Elem().Kind() != reflect.String || tag.Get("enumAccept") == "literal") {
+		if collection, err := ParseCollectionEnum(tag, t); collection != nil || err != nil {
+			return collection, err
+		}
 	}
 	return parseScalarEnum(tag, t)
 }
@@ -333,6 +337,9 @@ func (e *Enum) WireValues(input bool) []any {
 	return result
 }
 func (e *Enum) Encode(value any) (any, error) {
+	if e.collectionElement != nil {
+		return e.encodeCollection(value)
+	}
 	if e.collection != nil {
 		raw, err := json.Marshal(value)
 		if err != nil {
