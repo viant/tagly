@@ -7,6 +7,33 @@ import (
 	"testing"
 )
 
+func TestCollectionNullRuleIsInputOnly(t *testing.T) {
+	plan, err := ParseEnum(`mcpEnum:"true" choice:"DISPLAY" enumAccept:"literal" enumNull:"reject"`, reflect.TypeFor[[]string]())
+	if err != nil || plan == nil {
+		t.Fatal(plan, err)
+	}
+	if _, err := plan.DecodeJSON([]byte("null")); !errors.Is(err, ErrNullInput) {
+		t.Fatalf("input null policy: %v", err)
+	}
+	for _, source := range [][]string{nil, {}, {"DISPLAY"}} {
+		value, err := plan.Encode(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, _ := json.Marshal(source)
+		if string(got) != string(want) {
+			t.Fatalf("output: got %s want %s", got, want)
+		}
+	}
+	if _, err := plan.Encode([]string{"UNKNOWN"}); err == nil {
+		t.Fatal("output membership validation changed")
+	}
+}
+
 func TestMCPCollectionLiteralDomain(t *testing.T) {
 	tag := reflect.StructTag(`mcpEnum:"true" choice:"DISPLAY" choice:"VIDEO"`)
 	for _, typ := range []reflect.Type{reflect.TypeOf([]string{}), reflect.TypeOf((*[]string)(nil))} {

@@ -345,6 +345,11 @@ func (e *Enum) Encode(value any) (any, error) {
 		if err != nil {
 			return nil, err
 		}
+		// Null rejection belongs to input admission, as it does for scalar
+		// enums. A nil output collection retains its storage representation.
+		if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+			return value, nil
+		}
 		if _, err := e.decodeCollection(raw); err != nil {
 			return nil, err
 		}
