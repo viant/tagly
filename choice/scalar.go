@@ -54,6 +54,10 @@ func (e *Enum) parseAliases(tag reflect.StructTag) error {
 	stringPolicy, hasUnknown := tag.Lookup("enumUnknownString")
 	unknownIntegerPolicy, hasUnknownInteger := tag.Lookup("enumUnknownInteger")
 	if e.Accept != Scalar {
+		if hasUnknown && stringPolicy == "reject" && tag.Get("enumAccept") == "literal" && e.Type.Kind() == reflect.String && !hasAlias && !hasCase && !hasTrim && !hasInteger && !hasUnknownInteger {
+			e.compileLiteralMembers(e.WireValues(true))
+			return nil
+		}
 		if hasAlias || hasCase || hasTrim || hasInteger || hasUnknown || hasUnknownInteger {
 			return fmt.Errorf("enum input policies require enumAccept scalar")
 		}

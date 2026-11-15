@@ -40,7 +40,7 @@ type Entry struct {
 type Enum struct {
 	collection          *Constraint
 	collectionElement   *Enum
-	collectionMembers   map[string]bool
+	literalMembers      map[string]bool
 	Type                reflect.Type
 	Accept, Style       Style
 	Entries             []Entry
@@ -478,6 +478,9 @@ func (e *Enum) DecodeJSON(raw []byte) ([]byte, error) {
 			return nil, fmt.Errorf("enum input requires a JSON string")
 		}
 		if e.Type.Kind() == reflect.String {
+			if e.literalMembers != nil && !e.literalMembers[literal] {
+				return nil, fmt.Errorf("unknown enum input %v", value)
+			}
 			stored = literal
 		} else {
 			for _, entry := range e.Entries {

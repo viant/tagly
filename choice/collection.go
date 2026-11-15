@@ -100,10 +100,8 @@ func ParseCollectionEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 	if err != nil {
 		return nil, err
 	}
-	result := &Enum{Type: base, Accept: Literal, Style: Literal, rejectNull: tag.Get("enumNull") == "reject" || policy.Nullable != nil && !*policy.Nullable, collection: constraint, collectionMembers: make(map[string]bool, len(values))}
-	for _, value := range constraint.WireValues() {
-		result.collectionMembers[value.(string)] = true
-	}
+	result := &Enum{Type: base, Accept: Literal, Style: Literal, rejectNull: tag.Get("enumNull") == "reject" || policy.Nullable != nil && !*policy.Nullable, collection: constraint}
+	result.compileLiteralMembers(constraint.WireValues())
 	return result, nil
 }
 
@@ -144,7 +142,7 @@ func (e *Enum) decodeCollection(raw []byte) ([]byte, error) {
 		if err := json.Unmarshal(rawItem, &value); err != nil {
 			return nil, fmt.Errorf("enum collection item %d requires a JSON string: %w", i, err)
 		}
-		if !e.collectionMembers[value] {
+		if !e.literalMembers[value] {
 			return nil, fmt.Errorf("unknown enum collection item %d: %q", i, value)
 		}
 	}
@@ -178,4 +176,13 @@ func (e *Enum) encodeCollection(value any) (any, error) {
 		result[i] = converted
 	}
 	return result, nil
+}
+
+// compileLiteralMembers prepares exact canonical membership once for the plan.
+// Output aliases are deliberately excluded from input membership.
+func (e *Enum) compileLiteralMembers(values []any) {
+	e.literalMembers = make(map[string]bool, len(values))
+	for _, value := range values {
+		e.literalMembers[value.(string)] = true
+	}
 }
