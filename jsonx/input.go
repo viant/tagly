@@ -18,15 +18,20 @@ import (
 // schema for objectToSlice. Null is always decoder-owned.
 type InputDomain struct {
 	Boolean, String, Integer, Number, Array, Object, Null bool
-	IntegerValues                                         []json.Number
-	StringValues                                          []string
-	Minimum, Maximum                                      *json.Number
+	// Wrapper admits an object whose required, nonnull named member contains
+	// the destination array. It is distinct from an objectToSlice record.
+	Wrapper          string
+	IntegerValues    []json.Number
+	StringValues     []string
+	Minimum, Maximum *json.Number
 }
 
 // Policy is immutable after compilation and safe for concurrent use.
 type Policy struct {
 	conversion string
 	omitNull   bool
+	wrapper    string
+	arrayType  reflect.Type
 }
 
 // Compile preserves unknown jsonx options for compatibility with other owners.
@@ -35,10 +40,18 @@ func Compile(tag reflect.StructTag, typ reflect.Type) (*Policy, error) {
 	p := &Policy{}
 	for _, option := range strings.Split(tag.Get("jsonx"), ",") {
 		option = strings.TrimSpace(option)
+		if strings.HasPrefix(option, "wrapper=") {
+			name := strings.TrimPrefix(option, "wrapper=")
+			if name == "" || strings.TrimSpace(name) != name || p.wrapper != "" && p.wrapper != name {
+				return nil, fmt.Errorf("invalid or conflicting jsonx wrapper member %q", name)
+			}
+			p.wrapper = name
+			option = "wrapper"
+		}
 		switch option {
 		case "null=omit":
 			p.omitNull = true
-		case "boolToInt", "intToBool", "numberToString", "commaStringToSlice", "boolIntToYN", "objectToSlice":
+		case "boolToInt", "intToBool", "numberToString", "commaStringToSlice", "boolIntToYN", "objectToSlice", "wrapper":
 			if p.conversion != "" && p.conversion != option {
 				return nil, fmt.Errorf("incompatible jsonx conversions %s and %s", p.conversion, option)
 			}
@@ -51,10 +64,17 @@ func Compile(tag reflect.StructTag, typ reflect.Type) (*Policy, error) {
 	if typ == nil {
 		return nil, fmt.Errorf("jsonx requires destination type")
 	}
-	if p.conversion == "objectToSlice" {
-		if typ.Kind() != reflect.Slice || typ.Elem().Kind() != reflect.Struct {
+	if p.conversion == "wrapper" && p.wrapper == "" {
+		return nil, fmt.Errorf("jsonx wrapper requires a declared member name")
+	}
+	if p.conversion == "objectToSlice" || p.conversion == "wrapper" {
+		if p.conversion == "objectToSlice" && (typ.Kind() != reflect.Slice || typ.Elem().Kind() != reflect.Struct) {
 			return nil, fmt.Errorf("jsonx objectToSlice requires a direct slice of records, got %v", typ)
 		}
+		if p.conversion == "wrapper" && (typ.Kind() != reflect.Slice || typ.Elem().Kind() != reflect.Int) {
+			return nil, fmt.Errorf("jsonx wrapper requires a direct slice of native integers, got %v", typ)
+		}
+		p.arrayType = typ
 		// The policy admits a record shape; a custom JSON/Text owner could
 		// instead represent either the collection or element as a scalar.
 		for _, candidate := range []reflect.Type{typ, typ.Elem()} {
@@ -65,7 +85,7 @@ func Compile(tag reflect.StructTag, typ reflect.Type) (*Policy, error) {
 				reflect.TypeOf((*encoding.TextMarshaler)(nil)).Elem(),
 			} {
 				if candidate.Implements(owner) || reflect.PointerTo(candidate).Implements(owner) {
-					return nil, fmt.Errorf("jsonx objectToSlice cannot override custom JSON/Text ownership on %v", candidate)
+					return nil, fmt.Errorf("jsonx %s cannot override custom JSON/Text ownership on %v", p.conversion, candidate)
 				}
 			}
 		}
@@ -116,6 +136,8 @@ func (p *Policy) Apply(raw []byte) ([]byte, bool, error) {
 		return nil, false, fmt.Errorf("invalid JSON input for jsonx %s", p.conversion)
 	}
 	switch p.conversion {
+	case "wrapper":
+		return p.unwrapArray(raw)
 	case "objectToSlice":
 		if len(token) == 0 || !json.Valid(token) {
 			return fail()
@@ -214,6 +236,51 @@ func (p *Policy) Apply(raw []byte) ([]byte, bool, error) {
 	}
 	return raw, false, nil
 }
+
+// unwrapArray normalizes the explicit envelope before native decoding and
+// presence. Sequential decoding into one destination preserves Go JSON struct
+// semantics, including slice reuse and null integer elements in duplicate keys.
+func (p *Policy) unwrapArray(raw []byte) ([]byte, bool, error) {
+	token := bytes.TrimSpace(raw)
+	if len(token) == 0 || !json.Valid(token) {
+		return nil, false, fmt.Errorf("invalid JSON input for jsonx wrapper=%s", p.wrapper)
+	}
+	if token[0] == '[' {
+		return raw, false, nil
+	}
+	if token[0] != '{' {
+		return nil, false, fmt.Errorf("jsonx wrapper=%s requires an array or object", p.wrapper)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(token))
+	if _, err := decoder.Token(); err != nil {
+		return nil, false, err
+	}
+	selected := reflect.New(p.arrayType)
+	for decoder.More() {
+		key, err := decoder.Token()
+		if err != nil {
+			return nil, false, err
+		}
+		if !strings.EqualFold(key.(string), p.wrapper) {
+			return nil, false, fmt.Errorf("json: unknown field %q", key)
+		}
+		var value json.RawMessage
+		if err := decoder.Decode(&value); err != nil {
+			return nil, false, err
+		}
+		// Validate each occurrence, not only the last: an overwritten invalid
+		// member must not become accepted. Record/custom decoders are excluded
+		// at compilation, so this cannot bypass native record input policies.
+		if err := json.Unmarshal(value, selected.Interface()); err != nil {
+			return nil, false, err
+		}
+	}
+	if selected.Elem().IsNil() {
+		return nil, false, fmt.Errorf("%s is required", p.wrapper)
+	}
+	result, err := json.Marshal(selected.Elem().Interface())
+	return result, false, err
+}
 func nativeInteger(token []byte) (int64, error) {
 	if !json.Valid(token) || bytes.ContainsAny(token, ".eE") {
 		return 0, fmt.Errorf("integer token required")
@@ -229,6 +296,9 @@ func (p *Policy) InputDomain() InputDomain {
 		return d
 	}
 	switch p.conversion {
+	case "wrapper":
+		d.Wrapper = p.wrapper
+		d.Array = true
 	case "objectToSlice":
 		d.Object = true
 		d.Array = true
