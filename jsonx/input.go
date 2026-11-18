@@ -262,7 +262,7 @@ func (p *Policy) unwrapArray(raw []byte) ([]byte, bool, error) {
 			return nil, false, err
 		}
 		if !strings.EqualFold(key.(string), p.wrapper) {
-			return nil, false, fmt.Errorf("json: unknown field %q", key)
+			return nil, false, &WrapperError{kind: wrapperUnknownMember, member: key.(string)}
 		}
 		var value json.RawMessage
 		if err := decoder.Decode(&value); err != nil {
@@ -276,7 +276,7 @@ func (p *Policy) unwrapArray(raw []byte) ([]byte, bool, error) {
 		}
 	}
 	if selected.Elem().IsNil() {
-		return nil, false, fmt.Errorf("%s is required", p.wrapper)
+		return nil, false, &WrapperError{kind: wrapperRequiredMember, member: p.wrapper}
 	}
 	result, err := json.Marshal(selected.Elem().Interface())
 	return result, false, err

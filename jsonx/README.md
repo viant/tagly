@@ -16,6 +16,12 @@ members retain their final value, but an invalid earlier value still rejects
 the input. Empty arrays remain valid and nonnil. Bare `null` remains
 decoder-owned (or is omitted with `null=omit`); wrapped null is invalid.
 
+Unknown wrapper members and missing/null wrapper values return `*WrapperError`.
+Its `PublicMessage` method identifies only these native validation messages;
+nil and zero-value errors return no public message. Consumers must check the
+concrete type and preserve their own status and binding-owner rules. Other
+syntax, type, conversion and configuration errors are not classified as public.
+
 The policy normalizes the envelope's integer array for the consumer's existing
 decoding pipeline, including Go's slice reuse for duplicate members and null
 integer elements. `InputDomain.Wrapper` identifies this object envelope independently
