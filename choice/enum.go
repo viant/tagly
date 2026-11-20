@@ -50,6 +50,7 @@ type Enum struct {
 	trimSpace           bool
 	rejectNull          bool
 	integerPassthrough  bool
+	gojayInt            bool
 	unknownString       *json.Number
 	unknownInteger      *json.Number
 	union               *scalarUnionPolicy
@@ -102,6 +103,7 @@ func ParseEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 func parseScalarEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 	hasOutputAlias := strings.Contains(string(tag), `enumOutputAlias:`)
 	hasOutputUnknown := strings.Contains(string(tag), `enumOutputUnknown:`)
+	numberPolicy, hasNumber := tag.Lookup("enumNumber")
 	nullPolicy, hasNull := tag.Lookup("enumNull")
 	if hasNull && nullPolicy != "reject" {
 		return nil, fmt.Errorf("enumNull must be reject, got %q", nullPolicy)
@@ -117,7 +119,7 @@ func parseScalarEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 			return nil, fmt.Errorf("enumZero and enumEmpty require ScalarValue with scalar input and output")
 		}
 	}
-	if !strings.Contains(string(tag), `choice:`) && !strings.Contains(string(tag), `enumStyle:`) && !strings.Contains(string(tag), `enumAccept:`) && !strings.Contains(string(tag), `enumAlias:`) && !strings.Contains(string(tag), `enumCase:`) && !strings.Contains(string(tag), `enumInteger:`) && !strings.Contains(string(tag), `enumUnknownString:`) && !strings.Contains(string(tag), `enumUnknownInteger:`) && !strings.Contains(string(tag), `enumTrim:`) && !hasNull && !hasOutputAlias && !hasOutputUnknown {
+	if !strings.Contains(string(tag), `choice:`) && !strings.Contains(string(tag), `enumStyle:`) && !strings.Contains(string(tag), `enumAccept:`) && !strings.Contains(string(tag), `enumAlias:`) && !strings.Contains(string(tag), `enumCase:`) && !strings.Contains(string(tag), `enumInteger:`) && !strings.Contains(string(tag), `enumUnknownString:`) && !strings.Contains(string(tag), `enumUnknownInteger:`) && !strings.Contains(string(tag), `enumTrim:`) && !hasNumber && !hasNull && !hasOutputAlias && !hasOutputUnknown {
 		return nil, nil
 	}
 	values, err := Tags(tag)
@@ -136,7 +138,7 @@ func parseScalarEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 	_, hasInteger := tag.Lookup("enumInteger")
 	_, hasUnknown := tag.Lookup("enumUnknownString")
 	_, hasUnknownInteger := tag.Lookup("enumUnknownInteger")
-	active := hasStyle || hasAccept || hasAlias || hasCase || hasTrim || hasInteger || hasUnknown || hasUnknownInteger || hasNull || hasOutputAlias || hasOutputUnknown
+	active := hasNumber || hasStyle || hasAccept || hasAlias || hasCase || hasTrim || hasInteger || hasUnknown || hasUnknownInteger || hasNull || hasOutputAlias || hasOutputUnknown
 	legacyNumeric := base != nil && base.Kind() != reflect.String
 	for _, value := range values {
 		if prefix, _, ok := strings.Cut(value, ":"); ok {
@@ -163,6 +165,15 @@ func parseScalarEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 	if base == nil {
 		return nil, fmt.Errorf("enum requires a storage type")
 	}
+	if hasNumber {
+		if numberPolicy != "gojayInt" {
+			return nil, fmt.Errorf("unsupported enumNumber %q", numberPolicy)
+		}
+		if base.Kind() != reflect.String || tag.Get("enumAccept") != string(Scalar) ||
+			(hasStyle && tag.Get("enumStyle") != string(Literal)) || hasUnknown || hasUnknownInteger || hasInteger {
+			return nil, fmt.Errorf("enumNumber requires closed scalar input, string storage and literal output")
+		}
+	}
 	if base == reflect.TypeOf(ScalarValue{}) {
 		if hasOutputAlias || hasOutputUnknown {
 			return nil, fmt.Errorf("enum output policies require string storage and literal output")
@@ -186,7 +197,7 @@ func parseScalarEnum(tag reflect.StructTag, t reflect.Type) (*Enum, error) {
 	if len(values) == 0 {
 		return nil, fmt.Errorf("enum representation requires choice declarations")
 	}
-	result := &Enum{Type: base, rejectNull: hasNull}
+	result := &Enum{Type: base, rejectNull: hasNull, gojayInt: hasNumber}
 	if tag.Get("enumAccept") == string(Scalar) {
 		result.Accept = Scalar
 	} else {

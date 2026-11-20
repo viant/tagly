@@ -3,6 +3,7 @@ module github.com/viant/tagly
 go 1.21.3
 
 require (
+	github.com/francoispqt/gojay v1.2.13
 	github.com/stretchr/testify v1.8.4
 	github.com/viant/parsly v0.3.3
 )

@@ -18,13 +18,21 @@ require scalar input. Without case folding, names match exactly. Folding uses
 Unicode simple folding, matching Go's `strings.EqualFold`. Ambiguous names or
 aliases referring to different ordinals are rejected during plan construction.
 
-Scalar input rejects unknown values, booleans, arrays and objects. Numbers must
+Scalar input rejects unknown values, booleans, arrays and objects. By default, numbers must
 have an integer token spelling: `1.0` and `1e0` are rejected. Conversion uses
 `json.Number`, preserving large integer identity. Null passes through to the
 decoder; pointer allocation and presence tracking remain decoder responsibilities.
 Output styles remain `ordinal` and `literal`; scalar is input-only. Existing
 ordinal/literal input modes retain their behavior, including permissive
 same-representation values.
+
+For a closed string-backed scalar enum, `enumNumber:"gojayInt"` opts its
+numeric input into GoJay v1.2.13 integer conversion before checking the declared
+IDs. With the pacing choices above, numeric `1.5` selects `SPEND_EVENLY`,
+`2.1` fails membership, and `10e-1` selects `ASAP`. Quoted strings use the
+declared names and aliases. Schema consumers should emit a `number` branch
+with the supplied `NumberDescription` when present. The JSON number spelling
+affects conversion, so the nominal IDs alone cannot describe this branch.
 
 ## Input schema consumers
 

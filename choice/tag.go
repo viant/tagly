@@ -6,7 +6,7 @@ func IsEnumTag(name string) bool {
 	switch name {
 	case "choice", "enumAccept", "enumStyle", "enumCase", "enumTrim",
 		"enumEmpty", "enumZero", "enumNull", "enumInteger", "enumUnknownInteger",
-		"enumUnknownString", "enumAlias", "enumOutputAlias", "enumOutputUnknown":
+		"enumNumber", "enumUnknownString", "enumAlias", "enumOutputAlias", "enumOutputUnknown":
 		return true
 	}
 	return false

@@ -25,7 +25,10 @@ type enumAlias struct {
 // Ordinary enum modes continue to use WireType and WireValues.
 type InputDomain struct {
 	// Nullable is representation-level nullability, independent of pointers.
-	Nullable           bool
+	Nullable bool
+	// NumberDescription, when set, describes a numeric input branch whose token
+	// conversion is lexical. Integers lists the IDs checked after conversion.
+	NumberDescription  string
 	OpenIntegers       bool
 	OpenStrings        bool
 	Minimum            json.Number
@@ -220,7 +223,7 @@ func (e *Enum) decodeScalar(value any) ([]byte, error) {
 	index := -1
 	switch actual := value.(type) {
 	case json.Number:
-		code, err := ordinal(string(actual))
+		code, err := e.inputOrdinal(actual)
 		if err != nil {
 			return nil, err
 		}
@@ -305,6 +308,13 @@ func (e *Enum) InputDomain() *InputDomain {
 	}
 	for _, entry := range e.Entries {
 		result.Integers = append(result.Integers, entry.Ordinal)
+	}
+	if e.gojayInt {
+		ids := make([]string, len(result.Integers))
+		for i, id := range result.Integers {
+			ids[i] = id.String()
+		}
+		result.NumberDescription = "Numeric tokens use GoJay integer conversion. Accepted IDs after conversion: " + strings.Join(ids, ", ") + "."
 	}
 	if result.OpenStrings {
 		return result
