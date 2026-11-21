@@ -6,14 +6,18 @@ Consumers retain field visibility, custom decoding ownership, alias winner
 selection, recursive traversal, duplicate policy and error paths. It is not a
 replacement JSON decoder, and generic encoding/json does not honor these tags.
 
-Supported conversions are `boolToInt`, `intToBool`, `numberToString`,
+Supported conversions are `boolToInt`, `intToBool`, `ynToBool`, `numberToString`,
 `commaStringToSlice`, and `boolIntToYN`; each may combine with `null=omit`.
 Only one conversion is permitted. Unknown options retain prior compatibility.
 Integer input uses strict integer-token spelling and native signed bounds.
 Number-to-string preserves arbitrary numeric lexemes without float conversion.
 Comma strings trim/drop empty cells, with an all-empty result represented by
-null; arrays are passed through after []string validation. Y/N conversion accepts
+null; arrays are passed through after []string validation. `boolIntToYN` accepts
 booleans, any native signed integer, and strings Y/y/N/n/0/1/empty, without trimming.
+
+`ynToBool` accepts JSON booleans and the decoded strings Y/y/N/n on bool
+or *bool fields. With `null=omit`, null leaves the field absent. Its input
+schema exposes the boolean branch and the four permitted string values.
 
 `InputDomain` supplies input union branches only. String/Integer true mean open
 branches; StringValues/IntegerValues mean finite branches. Minimum/Maximum are

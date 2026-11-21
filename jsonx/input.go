@@ -54,7 +54,7 @@ func Compile(tag reflect.StructTag, typ reflect.Type) (*Policy, error) {
 			p.lastDuplicate = true
 		case "null=omit":
 			p.omitNull = true
-		case "boolToInt", "intToBool", "numberToString", "commaStringToSlice", "boolIntToYN", "objectToSlice", "wrapper", "numberToInt":
+		case "boolToInt", "intToBool", "ynToBool", "numberToString", "commaStringToSlice", "boolIntToYN", "objectToSlice", "wrapper", "numberToInt":
 			if p.conversion != "" && p.conversion != option {
 				return nil, fmt.Errorf("incompatible jsonx conversions %s and %s", p.conversion, option)
 			}
@@ -66,6 +66,9 @@ func Compile(tag reflect.StructTag, typ reflect.Type) (*Policy, error) {
 	}
 	if typ == nil {
 		return nil, fmt.Errorf("jsonx requires destination type")
+	}
+	if p.conversion == "ynToBool" && typ.Kind() == reflect.Pointer && typ.Elem().Kind() != reflect.Bool {
+		return nil, fmt.Errorf("jsonx ynToBool requires bool or *bool, got %v", typ)
 	}
 	if p.conversion == "numberToInt" && (typ != reflect.TypeOf((*int)(nil)) || p.omitNull) {
 		return nil, fmt.Errorf("jsonx numberToInt requires *int and explicit null presence")
@@ -114,7 +117,7 @@ func Compile(tag reflect.StructTag, typ reflect.Type) (*Policy, error) {
 	switch p.conversion {
 	case "boolToInt":
 		valid = typ.Kind() == reflect.Int
-	case "intToBool":
+	case "intToBool", "ynToBool":
 		valid = typ.Kind() == reflect.Bool
 	case "numberToString", "boolIntToYN":
 		valid = typ.Kind() == reflect.String
@@ -182,6 +185,20 @@ func (p *Policy) Apply(raw []byte) ([]byte, bool, error) {
 		if bytes.Equal(token, []byte("false")) {
 			return []byte("0"), false, nil
 		}
+	case "ynToBool":
+		if bytes.Equal(token, []byte("true")) || bytes.Equal(token, []byte("false")) {
+			return raw, false, nil
+		}
+		var letter string
+		if json.Unmarshal(token, &letter) == nil {
+			switch letter {
+			case "Y", "y":
+				return []byte("true"), false, nil
+			case "N", "n":
+				return []byte("false"), false, nil
+			}
+		}
+		return fail()
 	case "intToBool":
 		if bytes.Equal(token, []byte("true")) || bytes.Equal(token, []byte("false")) {
 			return raw, false, nil
@@ -328,6 +345,9 @@ func (p *Policy) InputDomain() InputDomain {
 		d.Boolean = true
 		d.Integer = true
 		d.Minimum, d.Maximum = nativeBounds()
+	case "ynToBool":
+		d.Boolean = true
+		d.StringValues = []string{"Y", "y", "N", "n"}
 	case "intToBool":
 		d.Boolean = true
 		d.IntegerValues = []json.Number{"0", "1"}
