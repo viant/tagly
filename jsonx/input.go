@@ -28,10 +28,11 @@ type InputDomain struct {
 
 // Policy is immutable after compilation and safe for concurrent use.
 type Policy struct {
-	conversion string
-	omitNull   bool
-	wrapper    string
-	arrayType  reflect.Type
+	conversion    string
+	omitNull      bool
+	lastDuplicate bool
+	wrapper       string
+	arrayType     reflect.Type
 }
 
 // Compile preserves unknown jsonx options for compatibility with other owners.
@@ -49,9 +50,11 @@ func Compile(tag reflect.StructTag, typ reflect.Type) (*Policy, error) {
 			option = "wrapper"
 		}
 		switch option {
+		case "duplicate=last":
+			p.lastDuplicate = true
 		case "null=omit":
 			p.omitNull = true
-		case "boolToInt", "intToBool", "numberToString", "commaStringToSlice", "boolIntToYN", "objectToSlice", "wrapper":
+		case "boolToInt", "intToBool", "numberToString", "commaStringToSlice", "boolIntToYN", "objectToSlice", "wrapper", "numberToInt":
 			if p.conversion != "" && p.conversion != option {
 				return nil, fmt.Errorf("incompatible jsonx conversions %s and %s", p.conversion, option)
 			}
@@ -63,6 +66,9 @@ func Compile(tag reflect.StructTag, typ reflect.Type) (*Policy, error) {
 	}
 	if typ == nil {
 		return nil, fmt.Errorf("jsonx requires destination type")
+	}
+	if p.conversion == "numberToInt" && (typ != reflect.TypeOf((*int)(nil)) || p.omitNull) {
+		return nil, fmt.Errorf("jsonx numberToInt requires *int and explicit null presence")
 	}
 	if p.conversion == "wrapper" && p.wrapper == "" {
 		return nil, fmt.Errorf("jsonx wrapper requires a declared member name")
@@ -120,7 +126,12 @@ func Compile(tag reflect.StructTag, typ reflect.Type) (*Policy, error) {
 	}
 	return p, nil
 }
-func (p *Policy) Active() bool { return p != nil && (p.omitNull || p.conversion != "") }
+
+// LastDuplicateWins selects the final occurrence of each identical decoded key.
+func (p *Policy) LastDuplicateWins() bool { return p != nil && p.lastDuplicate }
+func (p *Policy) Active() bool {
+	return p != nil && (p.omitNull || p.lastDuplicate || p.conversion != "")
+}
 
 // Apply converts one admitted field value, before typed assignment/presence.
 // An omitted null never reaches the destination; a conversion-produced null does.
@@ -136,6 +147,15 @@ func (p *Policy) Apply(raw []byte) ([]byte, bool, error) {
 		return nil, false, fmt.Errorf("invalid JSON input for jsonx %s", p.conversion)
 	}
 	switch p.conversion {
+	case "numberToInt":
+		if len(token) == 0 || (token[0] != '-' && (token[0] < '0' || token[0] > '9')) || !json.Valid(token) {
+			return fail()
+		}
+		id, err := numberAsInt64(string(token))
+		if err != nil {
+			return fail()
+		}
+		return strconv.AppendInt(nil, int64(id), 10), false, nil
 	case "wrapper":
 		return p.unwrapArray(raw)
 	case "objectToSlice":
@@ -296,6 +316,8 @@ func (p *Policy) InputDomain() InputDomain {
 		return d
 	}
 	switch p.conversion {
+	case "numberToInt":
+		d.Number = true
 	case "wrapper":
 		d.Wrapper = p.wrapper
 		d.Array = true

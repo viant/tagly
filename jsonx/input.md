@@ -44,3 +44,22 @@ same recursively generated element schema as the object alternative and array
 items; Object is not an unconstrained object. This policy does not change output
 serialization or automatically enable whole-body binding: a root consumer must
 explicitly carry the bound field policy into its native decoding pipeline once.
+
+### Numeric input for nullable integer identifiers
+
+On a `*int` field, `jsonx:"numberToInt"` accepts JSON numbers and preserves
+explicit null. For example, `1`, `1.5`, and `10e-1` each produce integer 1.
+Decimal and exponent tokens convert through float64 and truncate toward zero.
+Whole-number tokens parse as signed 64-bit integers, with an unsigned 64-bit
+fallback before conversion to int64. Tokens exceeding both integer ranges and
+floating-point overflow produce an error. Quoted numbers produce an error.
+The input schema admits a number or null. A field with this conversion must
+retain explicit null presence.
+
+A native object decoder can honor `jsonx:"duplicate=last"` on an individual
+field. It selects the last admitted occurrence with the same decoded member
+name. JSON escape spellings of the same name match. Different aliases and case
+variants keep their own names. The native decoder still validates the document
+and numeric ranges in discarded occurrences. Existing strict duplicate
+rejection takes precedence. The two options can be used together, as in
+`jsonx:"numberToInt,duplicate=last"`.
