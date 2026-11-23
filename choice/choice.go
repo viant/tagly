@@ -112,8 +112,9 @@ func Parse(tag reflect.StructTag, t reflect.Type) (*Constraint, error) {
 	if enumeration, err := ParseEnum(tag, t); err != nil {
 		return nil, err
 	} else if enumeration != nil {
-		if enumeration.CollectionItems() != nil {
-			return nil, nil // Membership remains owned by the collection codec.
+		if enumeration.CollectionItems() != nil || enumeration.union != nil {
+			// The codec checks collection items and scalar union branches. Neither has a scalar storage constraint.
+			return nil, nil
 		}
 		values, err := enumeration.StorageValues()
 		if err != nil {
